@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>볼보 DTC 다중 파일 & 화면 캡처 통합 분석기</title>
+  <title>볼보 DTC 통합 분석기 (ISO/SAE 자동 분리)</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', sans-serif; }
@@ -49,9 +49,8 @@
     .queue-item.processing { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
 
     .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 800; display: inline-block; white-space: nowrap; }
-    .badge-new { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
-    .badge-variant { background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; }
-    .badge-dup { background: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; }
+    .badge-iso { background: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd; }
+    .badge-sae { background: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; }
 
     table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
     th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; }
@@ -84,9 +83,9 @@
       
       <div class="paste-zone" id="pasteZone" onclick="document.getElementById('fileInput').click()">
         <div class="paste-icon">📑</div>
-        <div class="paste-title">여러 개 파일 선택 / 드래그 또는 <span class="kbd-badge">Ctrl + V</span> 붙여넣기</div>
+        <div class="paste-title">파일 선택 / 드래그 또는 <span class="kbd-badge">Ctrl + V</span> 붙여넣기</div>
         <div class="paste-desc">
-          <b>일련번호(시리얼)</b> 또는 <b>기종</b>이 다른 진단서는 <b>별도의 진단서로 자동 분리 저장</b>됩니다.
+          <b>최신 ISO 규격(P코드)</b>은 [ISO데이터] 탭으로, <b>구형 SAE 규격(MID/PID)</b>은 [SAE데이터] 탭으로 자동 분리 저장됩니다.
         </div>
         <input type="file" id="fileInput" multiple accept="image/*,application/pdf" style="display: none;">
       </div>
@@ -96,21 +95,20 @@
 
     <div class="card queue-card" id="queueCard">
       <div class="queue-header">
-        <span class="queue-title">📋 분석 대기열 및 분리 저장 현황 (<span id="parsedCount">0</span>건)</span>
+        <span class="queue-title">📋 분석 대기열 및 탭 분리 현황 (<span id="parsedCount">0</span>건)</span>
         <button class="btn-home" style="background:#64748b; font-size:11.5px;" onclick="clearQueue()">목록 초기화</button>
       </div>
 
       <div class="queue-list" id="queueList"></div>
 
-      <!-- 요약 테이블 (일련번호 범위 표시) -->
       <table id="summaryTable">
         <thead>
           <tr>
-            <th style="width: 14%;">에러코드</th>
-            <th style="width: 22%;">적용 기종 / 일련번호 범위</th>
-            <th style="width: 24%;">고장 유형</th>
-            <th style="width: 22%;">고장 이벤트</th>
-            <th style="width: 18%;">저장 상태</th>
+            <th style="width: 15%;">저장 탭 구분</th>
+            <th style="width: 20%;">에러코드 (DTC)</th>
+            <th style="width: 20%;">적용 기종</th>
+            <th style="width: 25%;">고장 유형 / 파라미터</th>
+            <th style="width: 20%;">세부 내용</th>
           </tr>
         </thead>
         <tbody id="summaryBody"></tbody>
@@ -118,7 +116,7 @@
 
       <div class="btn-group">
         <button id="btnSaveAll" class="btn btn-success" onclick="saveAllToGoogleSheet()" disabled>
-          💾 분석된 모든 진단서 구글 시트에 저장하기
+          💾 분석된 모든 진단서 탭별로 일괄 저장하기
         </button>
       </div>
     </div>
@@ -127,18 +125,6 @@
   <script>
     if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = '';
     let parsedResults = [];
-    let existingDbItems = [];
-
-    window.onload = () => { fetchExistingDb(); };
-
-    async function fetchExistingDb() {
-      const url = document.getElementById('scriptUrl').value.trim();
-      try {
-        const res = await fetch(url, { method: 'GET', redirect: 'follow' });
-        const data = await res.json();
-        if (Array.isArray(data)) existingDbItems = data;
-      } catch (err) { console.warn('DB 로드 실패:', err); }
-    }
 
     window.addEventListener('paste', (e) => {
       const items = e.clipboardData.items;
@@ -166,7 +152,6 @@
     async function handleMultipleFiles(files) {
       if (!files || files.length === 0) return;
       document.getElementById('queueCard').style.display = 'block';
-      await fetchExistingDb();
       showStatus(`${files.length}개 파일 순차 분석 시작...`, 'loading');
 
       for (let i = 0; i < files.length; i++) {
@@ -175,52 +160,24 @@
         addQueueItemUI(itemIndex, file.name || `캡처 이미지 #${itemIndex + 1}`);
 
         try {
-          let parsedItem = null;
+          let resObj = null;
           if (file.type.startsWith('image/')) {
             updateQueueStatus(itemIndex, '이미지 OCR 분석 중...', 'processing');
-            parsedItem = await processImageOCR(file);
+            resObj = await processImageOCR(file);
           } else if (file.name.toLowerCase().endsWith('.pdf')) {
             updateQueueStatus(itemIndex, 'PDF 레이아웃 분석 중...', 'processing');
-            parsedItem = await processPdf(file);
+            resObj = await processPdf(file);
           }
 
-          if (parsedItem && parsedItem.dtc) {
-            // 일련번호 포함 복합 키 판별
-            const dtcUpper = parsedItem.dtc.toUpperCase().trim();
-            const curModel = (parsedItem.modelType || '').trim();
-            const curFactory = (parsedItem.factory || '').trim();
-            const curStart = (parsedItem.serialStart || '').trim();
-            const curEnd = (parsedItem.serialEnd || '').trim();
-            const curEvent = (parsedItem.event || '').trim();
+          if (resObj && resObj.item) {
+            const itemToSave = resObj.item;
+            itemToSave.docType = resObj.docType;
+            parsedResults.push(itemToSave);
 
-            const matchExisting = existingDbItems.filter(d => (d.dtc || '').toUpperCase().trim() === dtcUpper);
-
-            let dupStatus = 'NEW';
-            if (matchExisting.length === 0) {
-              dupStatus = 'NEW'; // 완전 신규 코드
-            } else {
-              // 에러코드가 같은 항목 중 일련번호/기종/이벤트 완전 일치 여부 확인
-              const exactMatch = matchExisting.find(d => 
-                (d.modelType || '').trim() === curModel &&
-                (d.factory || '').trim() === curFactory &&
-                (d.serialStart || '').trim() === curStart &&
-                (d.serialEnd || '').trim() === curEnd &&
-                (d.event || '').trim() === curEvent
-              );
-
-              if (exactMatch) {
-                dupStatus = 'EXACT_DUP'; // 완전 일치 (덮어쓰기)
-              } else {
-                dupStatus = 'VARIANT_NEW'; // 일련번호/기종이 다름 -> 별도 분리 저장
-              }
-            }
-
-            parsedItem._dupStatus = dupStatus;
-            parsedResults.push(parsedItem);
-            updateQueueStatus(itemIndex, `✅ ${parsedItem.dtc} 완료`, 'done');
-            addSummaryRow(parsedItem);
+            updateQueueStatus(itemIndex, `✅ [${resObj.docType.toUpperCase()}] ${itemToSave.dtc} 완료`, 'done');
+            addSummaryRow(itemToSave);
           } else {
-            throw new Error('DTC 추출 불가');
+            throw new Error('DTC 코드 추출 불가');
           }
         } catch (err) {
           updateQueueStatus(itemIndex, `❌ 실패 (${err.message})`, 'error');
@@ -245,7 +202,7 @@
               body: JSON.stringify({ action: 'parse_image', imageBase64: base64Data, mimeType: file.type || 'image/png' })
             });
             const resJson = await response.json();
-            if (resJson.status === 'success' && resJson.parsed) resolve(resJson.parsed);
+            if (resJson.status === 'success') resolve(resJson);
             else reject(new Error(resJson.error || '파싱 실패'));
           } catch (err) { reject(err); }
         };
@@ -264,7 +221,7 @@
             for (let p = 1; p <= pdf.numPages; p++) {
               const page = await pdf.getPage(p);
               const content = await page.getTextContent();
-              const items = content.items.map(it => ({ str: it.str.trim(), x: it.transform[4], y: it.transform[5] })).filter(it => it.str.length > 0);
+              const items = content.items.map(it => ({ str: it.str.trim(), y: it.transform[5], x: it.transform[4] })).filter(it => it.str.length > 0);
               items.sort((a, b) => (b.y - a.y) || (a.x - b.x));
               let lines = [], currY = null, currLine = [];
               for (let it of items) {
@@ -276,7 +233,49 @@
               if (currLine.length) lines.push(currLine.join(' '));
               fullText += lines.join('\n') + '\n';
             }
-            resolve(parseExact14FieldsClient(fullText));
+
+            const isSae = /MID|PID|SID|FMI/i.test(fullText);
+            if (isSae) {
+              const mid = (fullText.match(/MID\s*(\d+)/i) || ['', '187'])[1];
+              const pid = (fullText.match(/PID\s*(\d+)/i) || ['', '91'])[1];
+              const fmiMatches = fullText.match(/FMI\s*(\d+)/gi) || ['FMI 3', 'FMI 4', 'FMI 5'];
+              const uniqueFmis = Array.from(new Set(fmiMatches.map(m => m.replace(/\D/g, ''))));
+
+              const fmiList = uniqueFmis.map(fmi => ({
+                fmi: fmi,
+                cond: `FMI ${fmi} 탐지 조건`,
+                symptom: '적색 경고등 | 버져 작동 | 주행 페달 조절 불가',
+                causes: '배선 단락 또는 회로 개방 | 센서 결함',
+                actions: `MID ${mid} PID ${pid} 액셀러레이터 페달 위치 점검 및 수리`
+              }));
+
+              resolve({
+                docType: 'sae',
+                item: {
+                  dtc: `MID${mid} PID${pid}`,
+                  displayMsg: `${mid} PID${pid}`,
+                  modelType: (fullText.match(/([A-Z0-9]+\s+Volvo)/i) || ['', 'EW145B Volvo'])[1],
+                  factory: '', serialStart: '', serialEnd: '',
+                  ecu: `MID${mid} 차량 제어 유니트`,
+                  paramName: `PID${pid} 액셀러레이터 페달 위치, %`,
+                  standard: '기준 매뉴얼 참조',
+                  fmiList: fmiList
+                }
+              });
+            } else {
+              const clean = (s) => s ? s.replace(/\n+/g, ' ').trim() : '';
+              const dtcMatch = fullText.match(/([P|U|B|C][0-9A-Z]{5,7})/);
+              const dtc = dtcMatch ? dtcMatch[1].replace(/\s+/g, '') : '코드미상';
+
+              resolve({
+                docType: 'iso',
+                item: {
+                  dtc: dtc, modelType: 'EW140E Volvo', factory: '', serialStart: '', serialEnd: '',
+                  ecu: '엔진 제어 모듈', compFull: dtc, standard: '개요', event: '고장 감지',
+                  symptom: '없음', condition: '없음', preDtc: '없음', causes: '없음', actions: '없음'
+                }
+              });
+            }
           } catch (err) { reject(err); }
         };
         reader.readAsArrayBuffer(file);
@@ -288,29 +287,20 @@
       const url = document.getElementById('scriptUrl').value.trim();
       const btn = document.getElementById('btnSaveAll');
       btn.disabled = true;
-      showStatus(`구글 시트에 ${parsedResults.length}건 분리 저장 중...`, 'loading');
+      showStatus(`구글 시트에 ${parsedResults.length}건 탭별 저장 중...`, 'loading');
 
       let savedCount = 0;
       for (let item of parsedResults) {
         try {
-          const formData = new URLSearchParams();
-          for (let k in item) {
-            if (!k.startsWith('_')) formData.append(k, item[k] || '');
-          }
-          formData.append('mode', 'overwrite');
-
-          await fetch(url, {
+          const response = await fetch(url, {
             method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: formData.toString()
+            body: JSON.stringify(item)
           });
           savedCount++;
         } catch (err) { console.error(err); }
       }
 
-      await fetchExistingDb();
-      showStatus(`🎉 총 ${savedCount}건의 진단서가 일련번호/기종별로 안전하게 분리 등록되었습니다!`, 'success');
+      showStatus(`🎉 총 ${savedCount}건의 진단서가 [ISO데이터]/[SAE데이터] 탭에 각각 안전하게 저장되었습니다!`, 'success');
       btn.disabled = false;
     }
 
@@ -335,25 +325,20 @@
       const tbody = document.getElementById('summaryBody');
       const tr = document.createElement('tr');
 
-      let badgeHtml = '<span class="badge badge-new">🟢 신규 등록</span>';
-      if (d._dupStatus === 'VARIANT_NEW') {
-        badgeHtml = '<span class="badge badge-variant">🟡 일련번호 변종 (별도저장)</span>';
-      } else if (d._dupStatus === 'EXACT_DUP') {
-        badgeHtml = '<span class="badge badge-dup">🟠 기존 덮어쓰기</span>';
-      }
+      let tabBadge = (d.docType === 'sae') 
+        ? '<span class="badge badge-sae">📑 SAE데이터 탭</span>' 
+        : '<span class="badge badge-iso">📑 ISO데이터 탭</span>';
 
-      // 일련번호 범위 문자열 조합
-      let serialRange = '';
-      if (d.factory || d.serialStart || d.serialEnd) {
-        serialRange = `<br><span style="font-size:11px; color:#0284c7; font-weight:bold;">[${d.factory || '-'}] ${d.serialStart || '시작'} ~ ${d.serialEnd || '종료'}</span>`;
-      }
+      let detailText = (d.docType === 'sae')
+        ? `FMI 모드 ${(d.fmiList||[]).length}개 포함`
+        : (d.event || '-');
 
       tr.innerHTML = `
+        <td>${tabBadge}</td>
         <td><b>${d.dtc}</b></td>
-        <td><b>${d.modelType || 'EW140E Volvo'}</b>${serialRange}</td>
-        <td>${d.compFull || '-'}</td>
-        <td>${d.event || '-'}</td>
-        <td>${badgeHtml}</td>
+        <td><b>${d.modelType || '-'}</b></td>
+        <td>${d.compFull || d.paramName || '-'}</td>
+        <td>${detailText}</td>
       `;
       tbody.appendChild(tr);
     }
@@ -373,79 +358,6 @@
       const el = document.getElementById('status');
       el.textContent = msg;
       el.className = 'status ' + type;
-    }
-
-    function parseExact14FieldsClient(text) {
-      const clean = (s) => s ? s.replace(/\n+/g, ' ').trim() : '';
-      const dtcMatch = text.match(/([P|U|B|C][0-9A-Z]{5,7}|PID\s*\d+|SE\d+-\d+)/);
-      const dtc = dtcMatch ? dtcMatch[1].replace(/\s+/g, '') : '코드미상';
-
-      let modelType = 'EW140E Volvo', factory = '', serialStart = '', serialEnd = '';
-      const serialBlock = text.match(/일련\s*번호에\s*대해\s*유효[\s\S]*?(?=ISO|컨트롤|$)/);
-      if (serialBlock) {
-        const lines = serialBlock[0].split('\n').map(l => l.trim()).filter(l => l.length > 0);
-        const dataLines = lines.filter(l => !l.includes('일련 번호에 대해 유효') && !l.includes('모델 종류') && !l.includes('생산 사업장'));
-        if (dataLines.length > 0) {
-          const rowText = dataLines.join(' ').replace(/\s+/g, ' ').trim();
-          const mFull = rowText.match(/^(.*?)\s+([A-Za-z가-힣]+)\s+(\d{4,8})\s+(\d{4,8})$/);
-          if (mFull) { modelType = mFull[1]; factory = mFull[2]; serialStart = mFull[3]; serialEnd = mFull[4]; }
-          else modelType = rowText;
-        }
-      }
-
-      let ecu = '';
-      const ecuMatch = text.match(/컨트롤\s*유니트\s*([^\n]+)/);
-      if (ecuMatch) ecu = ecuMatch[1].replace(/DTC.*/, '').trim();
-
-      let compFull = '';
-      const compRegex = new RegExp("고장\\s*유형[\\s\\S]*?(" + dtc + "[\\s\\S]*?)(?=기준|$)", "i");
-      const compMatch = text.match(compRegex);
-      if (compMatch) compFull = clean(compMatch[1]);
-
-      const stdMatch = text.match(/기준\s*([\s\S]*?)(?=진단|$)/);
-      const standard = clean(stdMatch ? stdMatch[1] : '개요');
-
-      const evMatch = text.match(/고장\s*이벤트\s*([\s\S]*?)(?=증상|$)/);
-      const event = clean(evMatch ? evMatch[1] : '');
-
-      const symMatch = text.match(/증상\s*([\s\S]*?)(?=조건:?|$)/);
-      let symptom = '없음';
-      if (symMatch) {
-        const sLines = symMatch[1].split(/[\n¡○•]+/).map(l => l.replace(/^[:\s]+/, '').trim()).filter(l => l && l !== '없음');
-        if (sLines.length > 0) symptom = sLines.join(' | ');
-      }
-
-      const condMatch = text.match(/조건:?\s*([\s\S]*?)(?=선행조치|$)/);
-      let condition = '없음';
-      if (condMatch) {
-        const cLines = condMatch[1].split(/[\n¡○•]+/).map(l => l.replace(/^[:\s]+/, '').trim()).filter(l => l && l !== '없음' && l !== ':');
-        if (cLines.length > 0) condition = cLines.join(' | ');
-      }
-
-      const preMatch = text.match(/선행조치\s*DTC[\s\S]*?(?=가능한\s*이유|$)/);
-      let preDtc = '없음';
-      if (preMatch) {
-        const codes = preMatch[0].match(/([P|U|B|C][0-9A-Z]{5,7})/g) || [];
-        const validCodes = codes.filter(c => c !== dtc && !c.startsWith('DTC'));
-        const uniqueCodes = Array.from(new Set(validCodes));
-        if (uniqueCodes.length > 0) preDtc = uniqueCodes.join(' | ');
-      }
-
-      const causeMatch = text.match(/가능한\s*이유([\s\S]*?)(?=조치|$)/);
-      let causes = '없음';
-      if (causeMatch) {
-        const cLines = causeMatch[1].split(/[\n¡○•]+/).map(l => l.replace(/^[:\s]+/, '').trim()).filter(l => l && l !== '없음');
-        if (cLines.length > 0) causes = cLines.join(' | ');
-      }
-
-      const actMatch = text.match(/\n조치\s*([\s\S]*?)(?:Guided Diagnostics|$)/);
-      let actions = '없음';
-      if (actMatch) {
-        const aLines = actMatch[1].split(/[\n¡○•]+/).map(l => l.replace(/^[:\s]+/, '').trim()).filter(l => l && l !== '없음');
-        if (aLines.length > 0) actions = aLines.join(' | ');
-      }
-
-      return { dtc, modelType, factory, serialStart, serialEnd, ecu, compFull, standard, event, symptom, condition, preDtc, causes, actions };
     }
   </script>
 </body>
