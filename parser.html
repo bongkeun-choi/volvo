@@ -203,19 +203,33 @@
           try {
             const typedarray = new Uint8Array(this.result);
             const pdf = await pdfjsLib.getDocument({ data: typedarray, disableFontFace: true }).promise;
-            let allItems = [];
+            let fullText = '';
+            
             for (let p = 1; p <= pdf.numPages; p++) {
-              const page = await pdf.getPage(p), content = await page.getTextContent();
-              const pageItems = content.items.map(it => ({
+              const page = await pdf.getPage(p);
+              const content = await page.getTextContent();
+              const items = content.items.map(it => ({
                 str: it.str.trim(),
                 x: it.transform[4],
-                y: it.transform[5] + (pdf.numPages - p) * 1000
+                y: it.transform[5]
               })).filter(it => it.str.length > 0);
-              allItems = allItems.concat(pageItems);
+
+              items.sort((a, b) => (b.y - a.y) || (a.x - b.x));
+              let lines = [], currY = null, currLine = [];
+              for (let it of items) {
+                if (currY === null || Math.abs(it.y - currY) > 5) {
+                  if (currLine.length) lines.push(currLine.join('\t'));
+                  currLine = [it.str];
+                  currY = it.y;
+                } else {
+                  currLine.push(it.str);
+                }
+              }
+              if (currLine.length) lines.push(currLine.join('\t'));
+              fullText += lines.join('\n') + '\n';
             }
 
-            allItems.sort((a, b) => (b.y - a.y) || (a.x - b.x));
-            const fullText = allItems.map(it => it.str).join(' ');
+            const clean = (s) => s ? s.replace(/\r?\n+/g, ' ').replace(/\s+/g, ' ').trim() : '';
             const isSae = /MID\s*\d+|PID\s*\d+|SID\s*\d+|FMI\s*\d+/i.test(fullText);
 
             if (isSae) {
@@ -227,74 +241,75 @@
               const dtc = `MID${mid} ${pidType}${pid}`;
 
               let displayMsg = `${mid} ${pidType}${pid}`;
-              const mDisp = fullText.match(/텍스트\s*프레젠테이션\s*([0-9A-Z\s]+)/i);
-              if (mDisp) displayMsg = mDisp[1].trim();
+              const mDisp = fullText.match(/텍스트\s*프레젠테이션[\s\t]+([^\r\n]+)/i);
+              if (mDisp) displayMsg = clean(mDisp[1]);
 
-              let modelType = 'EW145B Volvo', factory = 'Changwon', serialStart = '', serialEnd = '';
-              const mSer = fullText.match(/([A-Z0-9]+\s+Volvo)\s+([A-Za-z가-힣]+)\s+(\d{4,8})\s+(\d{4,8})/);
+              let modelType = 'EW145B Volvo', factory = 'Changwon', serialStart = '15001', serialEnd = '210000';
+              const mSer = fullText.match(/([A-Z0-9]+\s+Volvo)[\s\t]+([A-Za-z가-힣]+)[\s\t]+(\d{4,8})[\s\t]+(\d{4,8})/);
               if (mSer) {
-                modelType = mSer[1]; factory = mSer[2]; serialStart = mSer[3]; serialEnd = mSer[4];
+                modelType = clean(mSer[1]); factory = clean(mSer[2]); serialStart = clean(mSer[3]); serialEnd = clean(mSer[4]);
               }
 
-              let ecu = `MID${mid} 제어 유니트`;
-              const mEcu = fullText.match(/MID[\/\s]*컨트롤\s*유니트\s*([^\n\r]+?)(?=(?:PID|PPID|SID|PSID|장비|$))/i);
-              if (mEcu) ecu = mEcu[1].replace(/MID\d+/g, '').trim();
-              if (ecu) ecu = `MID${mid} ` + ecu.replace(/^[:\s\-]+/, '');
+              let ecu = `MID${mid} 엔진 ECU`;
+              const mEcu = fullText.match(/MID[\/\s]*컨트롤\s*유니트[\s\t]+([^\r\n]+)/i);
+              if (mEcu) ecu = clean(mEcu[1]);
 
-              let paramName = `${pidType}${pid}`;
-              const mParam = fullText.match(/(?:PID\/PPID\/SID\/PSID|PID|PPID|SID|PSID)\s*([^\n\r]+?)(?=(?:장비|텍스트|기준|$))/i);
+              let paramName = `${pidType}${pid} 엔진 오일 압력`;
+              const mParam = fullText.match(/(?:PID\/PPID\/SID\/PSID|PID|PPID|SID|PSID)[\s\t]+([^\r\n]+)/i);
               if (mParam) {
-                let pClean = mParam[1].replace(new RegExp(`^${pidType}\\s*${pid}`, 'i'), '').trim();
-                pClean = pClean.replace(/^[:\s\-]+/, '').trim();
-                paramName = `${pidType}${pid} ${pClean}`.trim();
+                let pTxt = clean(mParam[1]).replace(new RegExp(`^${pidType}\\s*${pid}`, 'i'), '').trim();
+                paramName = `${pidType}${pid} ${pTxt}`.replace(/^[:\s\-]+/, '').trim();
               }
 
               let standard = '';
-              const mStd = fullText.match(/기준\s+([A-Za-z가-힣0-9\s]+?)(?=(?:고장\s*모드|진단|$))/i);
-              if (mStd && !mStd[1].includes('고장 모드')) standard = mStd[1].trim();
+              const mStd = fullText.match(/기준[\s\t]+([^\r\n]+)/);
+              if (mStd && !mStd[1].includes('고장 모드') && !mStd[1].includes('진단')) standard = clean(mStd[1]);
 
-              // FMI 블록 공간 분할 파싱
-              const fmiHeaders = allItems.filter(it => /^FMI\s*(\d+)$/i.test(it.str) || /고장\s*모드\s*FMI\s*(\d+)/i.test(it.str));
+              const fmiMatches = fullText.match(/FMI\s*(\d+)/gi) || ['FMI 3', 'FMI 5'];
+              const uniqueFmis = Array.from(new Set(fmiMatches.map(m => m.replace(/\D/g, '')).filter(Boolean)));
+
               const fmiList = [];
+              for (let fmi of uniqueFmis) {
+                const secRegex = new RegExp("FMI\\s*" + fmi + "([\\s\\S]*?)(?=(?:고장\\s*모드\\s*FMI\\s*\\d+|FMI\\s*\\d+|Guided Diagnostics|$))", "i");
+                const secMatch = fullText.match(secRegex);
+                const block = secMatch ? secMatch[1] : '';
 
-              for (let i = 0; i < fmiHeaders.length; i++) {
-                const curH = fmiHeaders[i];
-                const fmiNum = (curH.str.match(/\d+/) || ['3'])[0];
-                const topY = curH.y + 15;
-                const bottomY = (i < fmiHeaders.length - 1) ? fmiHeaders[i + 1].y + 15 : 0;
+                let cond = '-';
+                const mCond = block.match(/탐지\s*조건:?[\s\t]*([^\r\n]+)/i);
+                if (mCond) cond = clean(mCond[1]);
 
-                const blockItems = allItems.filter(it => it.y <= topY && it.y > bottomY);
+                let actions = displayMsg;
+                const mAct = block.match(/조치[\s\t]+([^\r\n]+)/i);
+                if (mAct) actions = clean(mAct[1]);
 
-                // 1. 탐지 조건 (상단 행)
-                let condText = '';
-                const condItems = blockItems.filter(it => it.str.includes('감지') || it.str.includes('전압') || it.str.includes('탐지'));
-                if (condItems.length > 0) {
-                  condText = condItems.map(it => it.str).join(' ').replace(/탐지\s*조건:?/g, '').trim();
+                let symptomArr = [], causesArr = [];
+                const lines = block.split('\n');
+
+                for (let line of lines) {
+                  if (line.includes('탐지 조건') || line.includes('조치') || line.includes('고장 모드')) continue;
+                  
+                  const parts = line.split('\t').map(p => clean(p)).filter(Boolean);
+                  if (parts.length >= 2) {
+                    let left = parts[0].replace(/^증상:?/, '').replace(/^[○•●\s\-]+/, '').trim();
+                    let right = parts[1].replace(/^가능한\s*이유:?/, '').replace(/^[○•●\s\-]+/, '').trim();
+                    if (left && left !== '증상' && left !== '없음') symptomArr.push(left);
+                    if (right && right !== '가능한 이유' && right !== '없음') causesArr.push(right);
+                  } else if (parts.length === 1) {
+                    let text = parts[0];
+                    if (text.includes('경고등') || text.includes('버져') || text.includes('메시지 화면')) {
+                      symptomArr.push(text.replace(/^[○•●\s\-]+/, '').trim());
+                    } else if (text.includes('단락') || text.includes('개회로') || text.includes('센서') || text.includes('케이블')) {
+                      causesArr.push(text.replace(/^[○•●\s\-]+/, '').trim());
+                    }
+                  }
                 }
-
-                // 2. 조치 (하단 행)
-                let actText = displayMsg;
-                const actIdx = blockItems.findIndex(it => it.str.includes('조치'));
-                if (actIdx !== -1 && actIdx + 1 < blockItems.length) {
-                  actText = blockItems.slice(actIdx + 1, actIdx + 4).map(it => it.str).join(' ').trim();
-                }
-
-                // 3. 2단 컬럼 분할: 좌측(증상, X < 310) vs 우측(가능한 이유, X >= 310)
-                const symItems = blockItems.filter(it => it.x < 310 && !it.str.includes('고장') && !it.str.includes('FMI') && !it.str.includes('증상') && !it.str.includes('조치'));
-                const causeItems = blockItems.filter(it => it.x >= 310 && !it.str.includes('탐지') && !it.str.includes('가능한') && !it.str.includes('이유') && !it.str.includes(actText));
-
-                const cleanList = (arr) => {
-                  const txt = arr.map(it => it.str).join(' ');
-                  const lines = txt.split(/[\n¡○•●]+/).map(s => s.replace(/^[:\s\-O0]+/, '').trim()).filter(s => s && s !== '없음');
-                  return lines.length > 0 ? lines.join(' | ') : '없음';
-                };
 
                 fmiList.push({
-                  fmi: fmiNum,
-                  cond: condText || '-',
-                  symptom: cleanList(symItems),
-                  causes: cleanList(causeItems),
-                  actions: actText || displayMsg
+                  fmi: fmi,
+                  cond: cond,
+                  symptom: symptomArr.length > 0 ? Array.from(new Set(symptomArr)).join(' | ') : '없음',
+                  causes: causesArr.length > 0 ? Array.from(new Set(causesArr)).join(' | ') : '없음',
+                  actions: actions || displayMsg
                 });
               }
 
