@@ -65,7 +65,7 @@
       <div class="paste-zone" id="pasteZone" onclick="document.getElementById('fileInput').click()">
         <div class="paste-icon">📑</div>
         <div class="paste-title">파일 선택 / 드래그 또는 <span class="kbd-badge">Ctrl + V</span> 붙여넣기</div>
-        <div class="paste-desc">볼보 고장코드 매뉴얼 PDF 및 이미지를 고장모드(FMI/조건/증상/원인/조치)별로 정밀 파싱합니다.</div>
+        <div class="paste-desc">2D 블록 기반 분할 엔진으로 탐지조건, 증상, 원인, 조치를 정확히 분리합니다.</div>
         <input type="file" id="fileInput" multiple accept="image/*,application/pdf" style="display: none;">
       </div>
       <div class="option-box">
@@ -152,7 +152,7 @@
             updateQueueStatus(itemIndex, '이미지 OCR 분석 중...', 'processing');
             resObj = await processImageOCR(file);
           } else if (file.name.toLowerCase().endsWith('.pdf')) {
-            updateQueueStatus(itemIndex, 'PDF 2단 테이블 공간 파싱 중...', 'processing');
+            updateQueueStatus(itemIndex, '2D 공간 블록 파싱 중...', 'processing');
             resObj = await processPdf(file);
           }
 
@@ -209,6 +209,7 @@
       });
     }
 
+    // 2D 앵커 기반 공간 블록 분할 엔진
     function processPdf(file) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -218,11 +219,9 @@
             const pdf = await pdfjsLib.getDocument({ data: typedarray, disableFontFace: true }).promise;
             
             let allItems = [];
-            let pageWidth = 595; // A4 기본 가로폭
 
             for (let p = 1; p <= pdf.numPages; p++) {
               const page = await pdf.getPage(p);
-              pageWidth = page.view[2] || 595; // 문서 실제 가로폭
               const content = await page.getTextContent();
               
               content.items.forEach(it => {
@@ -231,113 +230,135 @@
                   allItems.push({
                     str: str,
                     x: it.transform[4],
-                    y: it.transform[5] + (pdf.numPages - p) * 1000 // 페이지별 수직 좌표 보정
+                    y: it.transform[5] + (pdf.numPages - p) * 1000 // 다중 페이지 Y좌표 연속화
                   });
                 }
               });
             }
 
-            // 상단 -> 하단, 좌측 -> 우측 정렬
-            allItems.sort((a, b) => (b.y - a.y) || (a.x - b.x));
-            const fullText = allItems.map(it => it.str).join(' ');
-            const midX = pageWidth / 2; // 좌측(증상)/우측(원인) 판별선
+            // 공간 헬퍼 함수: 특정 사각 박스 안의 텍스트를 줄 단위로 묶어서 반환
+            function extractBoxText(items, minX, maxX, minY, maxY) {
+              const inside = items.filter(it => it.x >= minX - 4 && it.x <= maxX + 4 && it.y >= minY - 2 && it.y <= maxY + 2);
+              if (inside.length === 0) return '';
+              inside.sort((a, b) => (b.y - a.y) || (a.x - b.x));
+              
+              let lines = [], currY = null, currLine = [];
+              inside.forEach(it => {
+                if (currY === null || Math.abs(it.y - currY) > 4) {
+                  if (currLine.length) lines.push(currLine.join(' '));
+                  currLine = [it.str];
+                  currY = it.y;
+                } else {
+                  currLine.push(it.str);
+                }
+              });
+              if (currLine.length) lines.push(currLine.join(' '));
+              return lines.join('\n');
+            }
 
-            const isSae = /MID\s*\d+|PID\s*\d+|SID\s*\d+|FMI\s*\d+/i.test(fullText);
+            // 불릿 기호 및 줄바꿈 정제 함수
+            function parseBulletItems(text) {
+              if (!text) return '없음';
+              const rawLines = text.split('\n');
+              const bullets = [];
+              
+              rawLines.forEach(line => {
+                const cleaned = line.replace(/^[○•●\s\-:]+/, '').trim();
+                if (cleaned && cleaned !== '없음' && cleaned !== '증상' && cleaned !== '가능한 이유') {
+                  bullets.push(cleaned);
+                }
+              });
+              return bullets.length > 0 ? Array.from(new Set(bullets)).join(' | ') : '없음';
+            }
+
+            allItems.sort((a, b) => (b.y - a.y) || (a.x - b.x));
+            const fullRawText = allItems.map(it => it.str).join(' ');
+            const isSae = /MID\s*\d+|PID\s*\d+|SID\s*\d+|FMI\s*\d+/i.test(fullRawText);
 
             if (isSae) {
-              // 1. 에러코드 및 디스플레이 메시지 추출
-              const midMatch = fullText.match(/MID\s*(\d+)/i);
-              const pidMatch = fullText.match(/(PID|PPID|SID|PSID)\s*(\d+)/i);
-              const mid = midMatch ? midMatch[1] : '128';
-              const pidType = pidMatch ? pidMatch[1] : 'PID';
-              const pid = pidMatch ? pidMatch[2] : '100';
+              // 1. 에러코드 및 디스플레이 메시지
+              const mid = (fullRawText.match(/MID\s*(\d+)/i) || ['', '128'])[1];
+              const pidMatch = fullRawText.match(/(PID|PPID|SID|PSID)\s*(\d+)/i) || ['', 'PID', '100'];
+              const pidType = pidMatch[1], pid = pidMatch[2];
               const dtc = `MID${mid} ${pidType}${pid}`;
 
               let displayMsg = `${mid} ${pidType}${pid}`;
-              const mDisp = fullText.match(/텍스트\s*프레젠테이션[\s\t]+([0-9A-Z\s]+)/i);
+              const mDisp = fullRawText.match(/텍스트\s*프레젠테이션[\s\t]+([0-9A-Z\s]+)/i);
               if (mDisp) displayMsg = mDisp[1].trim();
 
-              // 2. 모델 종류 및 생산 사업장, 일련번호
+              // 2. 모델 종류 및 생산 사업장, 일련번호 (정규식 정밀 매칭)
               let modelType = 'EW145B Volvo', factory = 'Changwon', serialStart = '15001', serialEnd = '210000';
-              const mSer = fullText.match(/([A-Z0-9]+\s+Volvo)[\s\t]+([A-Za-z가-힣]+)[\s\t]+(\d{4,8})[\s\t]+(\d{4,8})/);
+              const mSer = fullRawText.match(/([A-Z0-9]+\s+Volvo)[\s\t]+([A-Za-z가-힣]+)[\s\t]+(\d{4,8})[\s\t]+(\d{4,8})/);
               if (mSer) {
-                modelType = mSer[1].trim(); 
-                factory = mSer[2].trim(); 
-                serialStart = mSer[3].trim(); 
-                serialEnd = mSer[4].trim();
+                modelType = mSer[1].trim(); factory = mSer[2].trim();
+                serialStart = mSer[3].trim(); serialEnd = mSer[4].trim();
               }
 
-              // 3. 컨트롤 유니트
+              // 3. 컨트롤 유니트 & 파라미터명
               let ecu = `MID${mid} 엔진 ECU`;
-              const mEcu = fullText.match(/MID[\/\s]*컨트롤\s*유니트[\s\t]+([^\n\r]+?)(?=(?:PID|PPID|SID|장비|$))/i);
+              const mEcu = fullRawText.match(/MID[\/\s]*컨트롤\s*유니트[\s\t]+([^\n\r]+?)(?=(?:PID|PPID|SID|장비|$))/i);
               if (mEcu) {
                 const ecuClean = mEcu[1].replace(/MID\d+/g, '').replace(/^[:\s\-]+/, '').trim();
                 ecu = `MID${mid} ${ecuClean}`;
               }
 
-              // 4. 파라미터명
               let paramName = `${pidType}${pid} 엔진 오일 압력`;
-              const mParam = fullText.match(/(?:PID\/PPID\/SID\/PSID|PID|PPID|SID|PSID)[\s\t]+([^\n\r]+?)(?=(?:장비|텍스트|기준|$))/i);
+              const mParam = fullRawText.match(/(?:PID\/PPID\/SID\/PSID|PID|PPID|SID|PSID)[\s\t]+([^\n\r]+?)(?=(?:장비|텍스트|기준|$))/i);
               if (mParam) {
                 const pClean = mParam[1].replace(new RegExp(`^${pidType}\\s*${pid}`, 'i'), '').replace(/^[:\s\-]+/, '').trim();
                 paramName = `${pidType}${pid} ${pClean}`;
               }
 
-              // 5. 기준 매뉴얼
-              let standard = '';
-              const mStd = fullText.match(/기준[\s\t]+([^\n\r]+?)(?=(?:고장\s*모드|진단|$))/i);
-              if (mStd && !mStd[1].includes('고장 모드')) standard = mStd[1].trim();
-
-              // 6. FMI 모드별 블록 분리 및 좌/우 컬럼 정밀 파싱
-              const fmiHeaders = allItems.filter(it => /^FMI\s*(\d+)$/i.test(it.str) || /고장\s*모드\s*FMI\s*(\d+)/i.test(it.str));
+              // 4. 고장 모드(FMI)별 2D 앵커 블록 파싱
+              const fmiAnchors = allItems.filter(it => /^FMI\s*(\d+)$/i.test(it.str) || /고장\s*모드\s*FMI\s*(\d+)/i.test(it.str));
               const fmiList = [];
 
-              for (let i = 0; i < fmiHeaders.length; i++) {
-                const curH = fmiHeaders[i];
-                const fmiNum = (curH.str.match(/\d+/) || ['3'])[0];
-                const topY = curH.y + 12;
-                const bottomY = (i < fmiHeaders.length - 1) ? fmiHeaders[i + 1].y + 12 : 0;
+              for (let i = 0; i < fmiAnchors.length; i++) {
+                const curAnchor = fmiAnchors[i];
+                const fmiNum = (curAnchor.str.match(/\d+/) || ['3'])[0];
+                const blockTopY = curAnchor.y + 15;
+                const blockBottomY = (i < fmiAnchors.length - 1) ? fmiAnchors[i + 1].y + 15 : 0;
 
-                const block = allItems.filter(it => it.y <= topY && it.y > bottomY);
+                // 해당 FMI 블록에 속한 텍스트 요소들만 격리
+                const blockItems = allItems.filter(it => it.y <= blockTopY && it.y > blockBottomY);
 
-                // [탐지 조건]
+                // 내부 앵커 라벨 좌표 검색
+                const condAnchor = blockItems.find(it => it.str.includes('탐지') || it.str.includes('조건'));
+                const symAnchor = blockItems.find(it => it.str.includes('증상'));
+                const causeAnchor = blockItems.find(it => it.str.includes('가능한') || it.str.includes('이유'));
+                const actAnchor = blockItems.find(it => it.str.includes('조치'));
+
+                // (1) 탐지 조건 박스 추출
                 let cond = '-';
-                const condItems = block.filter(it => it.str.includes('감지') || it.str.includes('전압') || it.str.includes('탐지'));
-                if (condItems.length > 0) {
-                  cond = condItems.map(it => it.str).join(' ').replace(/.*탐지\s*조건:?/g, '').trim();
+                if (condAnchor) {
+                  const condBottomY = symAnchor ? symAnchor.y + 2 : (condAnchor.y - 25);
+                  const rawCond = extractBoxText(blockItems, condAnchor.x - 10, 9999, condBottomY, condAnchor.y + 10);
+                  cond = rawCond.replace(/.*탐지\s*조건:?/g, '').replace(/\n+/g, ' ').trim() || '-';
                 }
 
-                // [조치 링크]
+                // (2) 조치 링크 박스 추출
                 let actions = displayMsg;
-                const actIdx = block.findIndex(it => it.str.includes('조치'));
-                if (actIdx !== -1 && actIdx + 1 < block.length) {
-                  const actItems = block.slice(actIdx + 1).filter(it => Math.abs(it.y - block[actIdx].y) < 15);
-                  if (actItems.length) actions = actItems.map(it => it.str).join(' ').trim();
+                if (actAnchor) {
+                  const rawAct = extractBoxText(blockItems, actAnchor.x + 10, 9999, actAnchor.y - 10, actAnchor.y + 10);
+                  actions = rawAct.replace(/\n+/g, ' ').trim() || displayMsg;
                 }
 
-                // [증상] 좌측 바구니 (X < midX), [가능한 이유] 우측 바구니 (X >= midX)
-                const symList = [], causeList = [];
+                // (3) 증상 (좌측 박스) & 가능한 이유 (우측 박스) 분할 경계선 결정
+                const splitX = causeAnchor ? (causeAnchor.x - 10) : 310;
+                const tableTopY = symAnchor ? (symAnchor.y - 2) : (blockTopY - 20);
+                const tableBottomY = actAnchor ? (actAnchor.y + 5) : (blockBottomY + 10);
 
-                block.forEach(it => {
-                  if (it.str.includes('FMI') || it.str.includes('고장 모드') || it.str.includes('탐지 조건') || 
-                      it.str.includes('조치') || it.str === actions || it.str.includes('감지됨')) return;
-
-                  const cleanTxt = it.str.replace(/^[○•●\s\-:]+/, '').trim();
-                  if (!cleanTxt || cleanTxt === '증상' || cleanTxt === '가능한 이유') return;
-
-                  if (it.x < midX) {
-                    symList.push(cleanTxt);
-                  } else {
-                    causeList.push(cleanTxt);
-                  }
-                });
+                // 좌측 박스 -> 증상
+                const rawSym = extractBoxText(blockItems, 0, splitX, tableBottomY, tableTopY);
+                // 우측 박스 -> 가능한 이유
+                const rawCauses = extractBoxText(blockItems, splitX, 9999, tableBottomY, tableTopY);
 
                 fmiList.push({
                   fmi: fmiNum,
-                  cond: cond || '-',
-                  symptom: symList.length ? Array.from(new Set(symList)).join(' | ') : '없음',
-                  causes: causeList.length ? Array.from(new Set(causeList)).join(' | ') : '없음',
-                  actions: actions || displayMsg
+                  cond: cond,
+                  symptom: parseBulletItems(rawSym),
+                  causes: parseBulletItems(rawCauses),
+                  actions: actions
                 });
               }
 
@@ -346,12 +367,12 @@
                 item: {
                   dtc: dtc, displayMsg: displayMsg, modelType: modelType, factory: factory,
                   serialStart: serialStart, serialEnd: serialEnd, ecu: ecu, paramName: paramName,
-                  standard: standard, fmiList: fmiList
+                  standard: '', fmiList: fmiList
                 }
               });
             } else {
-              // ISO 단일 고장코드 파싱
-              const dtcMatch = fullText.match(/([P|U|B|C][0-9A-Z]{5,7})/);
+              // ISO 단일 DTC 처리
+              const dtcMatch = fullRawText.match(/([P|U|B|C][0-9A-Z]{5,7})/);
               resolve({
                 docType: 'iso',
                 item: {
@@ -382,7 +403,7 @@
         if (targetItems.length === 0) { alert('저장할 신규 항목이 없습니다.'); btn.disabled = false; return; }
       }
 
-      showStatus(`구글 시트에 ${targetItems.length}건 저장 중...`, 'loading');
+      showStatus(`구글 시트에 ${targetItems.length}건 정밀 저장 중...`, 'loading');
       let savedCount = 0;
       for (let item of targetItems) {
         try {
