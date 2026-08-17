@@ -2,73 +2,478 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>볼보 DTC 통합 파서 (ISO/SAE 지원)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>볼보 DTC/SAE 다중 파일 & 화면 캡처 통합 분석기</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <style>
-    * { box-sizing: border-box; font-family: sans-serif; }
-    body { background: #f8fafc; padding: 20px; }
-    .card { background: white; padding: 20px; border-radius: 12px; max-width: 800px; margin: auto; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-    .paste-zone { border: 2px dashed #0284c7; padding: 40px; text-align: center; cursor: pointer; border-radius: 8px; margin-top: 10px; background: #f0f9ff; }
-    input[type="text"] { width: 100%; padding: 10px; margin-bottom: 10px; }
-    .btn { background: #16a34a; color: white; border: none; padding: 12px; width: 100%; font-size: 16px; border-radius: 8px; cursor: pointer; margin-top: 10px; }
-    #status { margin-top: 10px; font-weight: bold; text-align: center; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', sans-serif; }
+    body { background: #f8fafc; color: #1e293b; padding-bottom: 60px; }
+    
+    .app-header {
+      background: #0f172a; color: white; padding: 12px 18px;
+      display: flex; justify-content: space-between; align-items: center;
+      position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    .app-header h1 { font-size: 15px; font-weight: 800; }
+    .btn-home {
+      background: #0284c7; color: white; text-decoration: none;
+      padding: 6px 12px; border-radius: 6px; font-size: 12.5px; font-weight: 800;
+    }
+
+    .container { max-width: 960px; margin: 20px auto; padding: 0 16px; }
+    .card { background: white; padding: 22px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 20px; border: 1px solid #e2e8f0; }
+    .input-group { margin-bottom: 15px; }
+    label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 13.5px; }
+    input[type="text"] { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; }
+    
+    .paste-zone {
+      border: 2.5px dashed #0284c7; padding: 40px 15px; text-align: center; border-radius: 14px;
+      cursor: pointer; background: #f0f9ff; transition: all 0.2s;
+    }
+    .paste-zone:hover { background: #e0f2fe; border-color: #0369a1; }
+    .paste-icon { font-size: 38px; margin-bottom: 8px; }
+    .paste-title { font-size: 16.5px; font-weight: 900; color: #0284c7; margin-bottom: 6px; }
+    .paste-desc { font-size: 13px; color: #64748b; line-height: 1.5; }
+    .kbd-badge { background: #0f172a; color: white; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-weight: bold; }
+
+    /* 옵션 바 */
+    .option-box {
+      background: #f1f5f9; padding: 12px 16px; border-radius: 8px;
+      margin-top: 14px; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 10px; font-size: 13px; font-weight: 700;
+    }
+    .option-group { display: flex; align-items: center; gap: 12px; }
+
+    .queue-card { display: none; }
+    .queue-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .queue-title { font-size: 15px; font-weight: 800; color: #0f172a; }
+    .queue-list { display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; margin-bottom: 14px; }
+    .queue-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 14px; background: #f1f5f9; border-radius: 8px; font-size: 13px; font-weight: 700;
+    }
+    .queue-item.done { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .queue-item.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .queue-item.processing { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+
+    .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 800; display: inline-block; white-space: nowrap; }
+    .badge-new { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+    .badge-variant { background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; }
+    .badge-dup { background: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; }
+    .badge-iso { background: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd; }
+    .badge-sae { background: #f3e8ff; color: #7e22ce; border: 1px solid #e9d5ff; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
+    th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; }
+    th { background: #f8fafc; font-weight: 700; color: #475569; }
+
+    .btn-group { display: flex; gap: 10px; margin-top: 16px; }
+    .btn { flex: 1; padding: 13px; border: none; border-radius: 8px; font-size: 14px; font-weight: 800; cursor: pointer; text-align: center; }
+    .btn-success { background: #16a34a; color: white; }
+    .btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+
+    .status { margin-top: 12px; font-weight: bold; font-size: 13.5px; text-align: center; }
+    .status.success { color: #16a34a; }
+    .status.error { color: #dc2626; }
+    .status.loading { color: #0284c7; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h2>🛠️ 볼보 진단서 파서 (자동 분류)</h2>
-    <input type="text" id="scriptUrl" value="https://script.google.com/macros/s/AKfycbzV5H2kowUqmGNO2UloeU_2OMYT0ZbyyzsS3iN4LXLhY_WvZ1maxiIOZ9jvvCg99aM/exec">
-    <div class="paste-zone" onclick="document.getElementById('fileInput').click()">
-      <h3>여기를 클릭하거나 파일을 드래그하세요</h3>
-      <p>ISO(P코드) 및 SAE(MID/PID) 모두 지원합니다.</p>
+
+  <div class="app-header">
+    <h1>🛠️ 볼보 DTC/SAE 다중 파일 & 화면 캡처 통합 분석기</h1>
+    <a href="index.html" class="btn-home">🔍 진단서 조회 (홈)</a>
+  </div>
+
+  <div class="container">
+    <div class="card">
+      <div class="input-group">
+        <label>Google Apps Script 웹 앱 URL:</label>
+        <input type="text" id="scriptUrl" value="https://script.google.com/macros/s/AKfycbzV5H2kowUqmGNO2UloeU_2OMYT0ZbyyzsS3iN4LXLhY_WvZ1maxiIOZ9jvvCg99aM/exec">
+      </div>
+      
+      <div class="paste-zone" id="pasteZone" onclick="document.getElementById('fileInput').click()">
+        <div class="paste-icon">📑</div>
+        <div class="paste-title">파일 선택 / 드래그 또는 <span class="kbd-badge">Ctrl + V</span> 붙여넣기</div>
+        <div class="paste-desc">
+          <b>최신 ISO 규격(P코드)</b> 및 <b>구형 SAE 규격(MID/PID/FMI)</b>을 스스로 인식하고 중복 여부를 실시간 검사합니다.
+        </div>
+        <input type="file" id="fileInput" multiple accept="image/*,application/pdf" style="display: none;">
+      </div>
+
+      <div class="option-box">
+        <span>⚙️ 기존 시트와 중복 발생 시 동작:</span>
+        <div class="option-group">
+          <label style="font-weight:normal; margin:0; cursor:pointer;">
+            <input type="radio" name="dupPolicy" value="overwrite" checked> 기존 데이터 덮어쓰기(갱신)
+          </label>
+          <label style="font-weight:normal; margin:0; cursor:pointer;">
+            <input type="radio" name="dupPolicy" value="skip"> 중복 항목 저장 건너뛰기
+          </label>
+        </div>
+      </div>
+
+      <div id="status" class="status"></div>
     </div>
-    <input type="file" id="fileInput" accept="image/*,application/pdf" style="display:none;">
-    <button class="btn" id="btnSave" onclick="saveData()">시트에 일괄 저장</button>
-    <div id="status"></div>
+
+    <div class="card queue-card" id="queueCard">
+      <div class="queue-header">
+        <span class="queue-title">📋 분석 대기열 및 중복 판별 현황 (<span id="parsedCount">0</span>건)</span>
+        <button class="btn-home" style="background:#64748b; font-size:11.5px;" onclick="clearQueue()">목록 초기화</button>
+      </div>
+
+      <div class="queue-list" id="queueList"></div>
+
+      <table id="summaryTable">
+        <thead>
+          <tr>
+            <th style="width: 12%;">구분</th>
+            <th style="width: 18%;">에러코드 (DTC)</th>
+            <th style="width: 22%;">적용 기종 / 일련번호</th>
+            <th style="width: 28%;">고장 유형 / 이벤트</th>
+            <th style="width: 20%;">중복 검사 상태</th>
+          </tr>
+        </thead>
+        <tbody id="summaryBody"></tbody>
+      </table>
+
+      <div class="btn-group">
+        <button id="btnSaveAll" class="btn btn-success" onclick="saveAllToGoogleSheet()" disabled>
+          💾 분석된 모든 진단서 구글 시트에 일괄 저장하기
+        </button>
+      </div>
+    </div>
   </div>
 
   <script>
     if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = '';
-    let parsedQueue = [];
+    let parsedResults = [];
+    let existingDbItems = [];
 
-    document.querySelector('.paste-zone').addEventListener('dragover', e => e.preventDefault());
-    document.querySelector('.paste-zone').addEventListener('drop', e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); });
-    document.getElementById('fileInput').addEventListener('change', e => handleFile(e.target.files[0]));
-    window.addEventListener('paste', e => {
-      const items = e.clipboardData.items;
-      for (let i=0; i<items.length; i++) if (items[i].type.startsWith('image/')) handleFile(items[i].getAsFile());
-    });
+    window.onload = () => { fetchExistingDb(); };
 
-    async function handleFile(file) {
-      if(!file) return;
-      document.getElementById('status').innerText = "분석 중...";
+    async function fetchExistingDb() {
+      const url = document.getElementById('scriptUrl').value.trim();
       try {
-        if(file.type.startsWith('image/')) {
-          const reader = new FileReader();
-          reader.onload = async () => {
-            const base64 = reader.result.split(',')[1];
-            const res = await fetch(document.getElementById('scriptUrl').value, { method: 'POST', body: JSON.stringify({ action: 'parse_image', imageBase64: base64, mimeType: file.type }) });
-            const json = await res.json();
-            if(json.item) { parsedQueue.push(json); document.getElementById('status').innerText = `${json.docType.toUpperCase()} 코드 추출 완료! 저장 버튼을 누르세요.`; }
-          };
-          reader.readAsDataURL(file);
-        } else {
-          document.getElementById('status').innerText = "PDF 지원은 서버 OCR로 진행됩니다. 스크립트를 확인하세요.";
-        }
-      } catch(e) { document.getElementById('status').innerText = "오류 발생: " + e.message; }
+        const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+        const data = await res.json();
+        if (Array.isArray(data)) existingDbItems = data;
+      } catch (err) { console.warn('DB 로드 실패:', err); }
     }
 
-    async function saveData() {
-      if(!parsedQueue.length) return;
-      document.getElementById('status').innerText = "저장 중...";
-      for(let obj of parsedQueue) {
-        let payload = obj.item;
-        payload.docType = obj.docType;
-        await fetch(document.getElementById('scriptUrl').value, { method: 'POST', body: JSON.stringify(payload) });
+    window.addEventListener('paste', (e) => {
+      const items = e.clipboardData.items;
+      const files = [];
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) files.push(items[i].getAsFile());
       }
-      parsedQueue = [];
-      document.getElementById('status').innerText = "✅ 저장 완료되었습니다!";
+      if (files.length > 0) { handleMultipleFiles(files); e.preventDefault(); }
+    });
+
+    const pasteZone = document.getElementById('pasteZone');
+    const fileInput = document.getElementById('fileInput');
+
+    pasteZone.addEventListener('dragover', (e) => { e.preventDefault(); pasteZone.style.borderColor = '#0369a1'; });
+    pasteZone.addEventListener('dragleave', () => { pasteZone.style.borderColor = '#0284c7'; });
+    pasteZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      pasteZone.style.borderColor = '#0284c7';
+      if (e.dataTransfer.files.length) handleMultipleFiles(Array.from(e.dataTransfer.files));
+    });
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length) handleMultipleFiles(Array.from(e.target.files));
+    });
+
+    async function handleMultipleFiles(files) {
+      if (!files || files.length === 0) return;
+      document.getElementById('queueCard').style.display = 'block';
+      await fetchExistingDb();
+      showStatus(`${files.length}개 파일 순차 분석 시작...`, 'loading');
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const itemIndex = parsedResults.length;
+        addQueueItemUI(itemIndex, file.name || `캡처 이미지 #${itemIndex + 1}`);
+
+        try {
+          let resObj = null;
+          if (file.type.startsWith('image/')) {
+            updateQueueStatus(itemIndex, '이미지 OCR 분석 중...', 'processing');
+            resObj = await processImageOCR(file);
+          } else if (file.name.toLowerCase().endsWith('.pdf')) {
+            updateQueueStatus(itemIndex, 'PDF 레이아웃 분석 중...', 'processing');
+            resObj = await processPdf(file);
+          }
+
+          if (resObj && resObj.item) {
+            const itemToSave = resObj.item;
+            itemToSave.docType = resObj.docType;
+
+            // =====================================================
+            // 🔍 정밀 중복 검사 (DTC + 기종 + 일련번호 + 이벤트 대조)
+            // =====================================================
+            const dtcClean = String(itemToSave.dtc || '').toUpperCase().replace(/[\s\-_]/g, '');
+            const curModel = String(itemToSave.modelType || '').trim();
+            const curStart = String(itemToSave.serialStart || '').trim();
+            const curEnd = String(itemToSave.serialEnd || '').trim();
+            const curEvent = String(itemToSave.event || itemToSave.paramName || '').trim();
+
+            const matchExisting = existingDbItems.filter(d => 
+              String(d.dtc || '').toUpperCase().replace(/[\s\-_]/g, '') === dtcClean
+            );
+
+            let dupStatus = 'NEW';
+            if (matchExisting.length === 0) {
+              dupStatus = 'NEW'; // 완전 신규 코드
+            } else {
+              const exactMatch = matchExisting.find(d => 
+                String(d.modelType || '').trim() === curModel &&
+                String(d.serialStart || '').trim() === curStart &&
+                String(d.serialEnd || '').trim() === curEnd &&
+                (d.type === 'sae' || String(d.event || '').trim() === curEvent)
+              );
+
+              if (exactMatch) {
+                dupStatus = 'EXACT_DUP'; // 완전 일치 (덮어쓰기 대상)
+              } else {
+                dupStatus = 'VARIANT_NEW'; // 코드는 같으나 기종/일련번호 다름 (별도 분리저장)
+              }
+            }
+
+            itemToSave._dupStatus = dupStatus;
+            parsedResults.push(itemToSave);
+
+            updateQueueStatus(itemIndex, `✅ [${resObj.docType.toUpperCase()}] ${itemToSave.dtc} 완료`, 'done');
+            addSummaryRow(itemToSave);
+          } else {
+            throw new Error('DTC 코드 추출 불가');
+          }
+        } catch (err) {
+          updateQueueStatus(itemIndex, `❌ 실패 (${err.message})`, 'error');
+        }
+      }
+
+      document.getElementById('parsedCount').innerText = parsedResults.length;
+      document.getElementById('btnSaveAll').disabled = parsedResults.length === 0;
+      
+      const newCount = parsedResults.filter(r => r._dupStatus === 'NEW').length;
+      const varCount = parsedResults.filter(r => r._dupStatus === 'VARIANT_NEW').length;
+      const dupCount = parsedResults.filter(r => r._dupStatus === 'EXACT_DUP').length;
+      showStatus(`분석 완료: 신규 ${newCount}건, 변종 ${varCount}건, 기존갱신 ${dupCount}건 준비됨`, 'success');
+      fileInput.value = '';
+    }
+
+    function processImageOCR(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = async function() {
+          try {
+            const base64Data = reader.result.split(',')[1];
+            const url = document.getElementById('scriptUrl').value.trim();
+            const response = await fetch(url, {
+              method: 'POST',
+              body: JSON.stringify({ action: 'parse_image', imageBase64: base64Data, mimeType: file.type || 'image/png' })
+            });
+            const resJson = await response.json();
+            if (resJson.status === 'success') resolve(resJson);
+            else reject(new Error(resJson.error || '파싱 실패'));
+          } catch (err) { reject(err); }
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function processPdf(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = async function() {
+          try {
+            const typedarray = new Uint8Array(this.result);
+            const pdf = await pdfjsLib.getDocument({ data: typedarray, disableFontFace: true }).promise;
+            let fullText = '';
+            for (let p = 1; p <= pdf.numPages; p++) {
+              const page = await pdf.getPage(p);
+              const content = await page.getTextContent();
+              const items = content.items.map(it => ({ str: it.str.trim(), y: it.transform[5], x: it.transform[4] })).filter(it => it.str.length > 0);
+              items.sort((a, b) => (b.y - a.y) || (a.x - b.x));
+              let lines = [], currY = null, currLine = [];
+              for (let it of items) {
+                if (currY === null || Math.abs(it.y - currY) > 4) {
+                  if (currLine.length) lines.push(currLine.join(' '));
+                  currLine = [it.str]; currY = it.y;
+                } else { currLine.push(it.str); }
+              }
+              if (currLine.length) lines.push(currLine.join(' '));
+              fullText += lines.join('\n') + '\n';
+            }
+
+            const clean = (s) => s ? s.replace(/\n+/g, ' ').trim() : '';
+            const isSae = /MID\s*\d+|PID\s*\d+|SID\s*\d+|FMI\s*\d+/i.test(fullText);
+
+            if (isSae) {
+              const mid = (fullText.match(/MID\s*(\d+)/i) || ['', '187'])[1];
+              const pid = (fullText.match(/(PID|PPID|SID|PSID)\s*(\d+)/i) || ['', 'PID', '91'])[2];
+              const disp = (fullText.match(/텍스트\s*프레젠테이션\s*([^\n]+)/) || ['', `${mid} PID${pid}`])[1].trim();
+
+              const fmiMatches = fullText.match(/FMI\s*(\d+)/gi) || ['FMI 3', 'FMI 4', 'FMI 5'];
+              const uniqueFmis = Array.from(new Set(fmiMatches.map(m => m.replace(/\D/g, ''))));
+
+              const fmiList = uniqueFmis.map(fmi => {
+                const secRegex = new RegExp("FMI\\s*" + fmi + "([\\s\\S]*?)(?=(?:고장\\s*모드\\s*FMI\\s*\\d+|FMI\\s*\\d+|Guided Diagnostics|$))", "i");
+                const secMatch = fullText.match(secRegex);
+                const secText = secMatch ? secMatch[1] : '';
+
+                const mCond = secText.match(/탐지\s*조건:?\s*([\s\S]*?)(?=(?:증상|가능한|조치|$))/i);
+                const mSym = secText.match(/증상:?\s*([\s\S]*?)(?=(?:가능한|조치|$))/i);
+                const mCause = secText.match(/가능한\s*이유:?\s*([\s\S]*?)(?=(?:조치|$))/i);
+                const mAct = secText.match(/조치:?\s*([^\n]+)/i);
+
+                return {
+                  fmi: fmi,
+                  cond: mCond ? clean(mCond[1]) : '',
+                  symptom: mSym ? clean(mSym[1]).replace(/[\n○•]+/g, ' | ') : '없음',
+                  causes: mCause ? clean(mCause[1]).replace(/[\n○•]+/g, ' | ') : '없음',
+                  actions: mAct ? clean(mAct[1]) : disp
+                };
+              });
+
+              resolve({
+                docType: 'sae',
+                item: {
+                  dtc: `MID${mid} PID${pid}`,
+                  displayMsg: disp,
+                  modelType: (fullText.match(/([A-Z0-9]+\s+Volvo)/i) || ['', 'EW145B Volvo'])[1],
+                  factory: '', serialStart: '', serialEnd: '',
+                  ecu: `MID${mid} 차량 제어 유니트`,
+                  paramName: `PID${pid} 액셀러레이터 페달 위치, %`,
+                  standard: '기준 매뉴얼 참조',
+                  fmiList: fmiList
+                }
+              });
+            } else {
+              const dtcMatch = fullText.match(/([P|U|B|C][0-9A-Z]{5,7})/);
+              const dtc = dtcMatch ? dtcMatch[1].replace(/\s+/g, '') : '코드미상';
+
+              resolve({
+                docType: 'iso',
+                item: {
+                  dtc: dtc, modelType: 'EW140E Volvo', factory: '', serialStart: '', serialEnd: '',
+                  ecu: '엔진 제어 모듈', compFull: dtc, standard: '개요', event: '고장 감지',
+                  symptom: '없음', condition: '없음', preDtc: '없음', causes: '없음', actions: '없음'
+                }
+              });
+            }
+          } catch (err) { reject(err); }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    // ========================================================
+    // 💾 구글 시트 저장 (중복 정책 지원)
+    // ========================================================
+    async function saveAllToGoogleSheet() {
+      if (parsedResults.length === 0) return;
+      const url = document.getElementById('scriptUrl').value.trim();
+      const btn = document.getElementById('btnSaveAll');
+      const dupPolicy = document.querySelector('input[name="dupPolicy"]:checked').value;
+      btn.disabled = true;
+
+      let targetItems = parsedResults;
+      if (dupPolicy === 'skip') {
+        targetItems = parsedResults.filter(r => r._dupStatus === 'NEW' || r._dupStatus === 'VARIANT_NEW');
+        if (targetItems.length === 0) {
+          alert('저장할 신규 항목이 없습니다. (모두 중복)');
+          btn.disabled = false;
+          return;
+        }
+      }
+
+      showStatus(`구글 시트에 ${targetItems.length}건 분리 저장 중...`, 'loading');
+
+      let savedCount = 0;
+      for (let item of targetItems) {
+        try {
+          item.mode = 'overwrite';
+          await fetch(url, {
+            method: 'POST',
+            body: JSON.stringify(item)
+          });
+          savedCount++;
+        } catch (err) { console.error(err); }
+      }
+
+      await fetchExistingDb();
+      showStatus(`🎉 총 ${savedCount}건의 진단서가 시트 탭에 안전하게 저장되었습니다!`, 'success');
+      btn.disabled = false;
+    }
+
+    function addQueueItemUI(idx, name) {
+      const qList = document.getElementById('queueList');
+      const div = document.createElement('div');
+      div.id = `qItem_${idx}`;
+      div.className = 'queue-item processing';
+      div.innerHTML = `<span>📄 ${name}</span><span class="status-badge">분석 중...</span>`;
+      qList.appendChild(div);
+    }
+
+    function updateQueueStatus(idx, msg, type) {
+      const el = document.getElementById(`qItem_${idx}`);
+      if (el) {
+        el.className = `queue-item ${type}`;
+        el.querySelector('.status-badge').innerText = msg;
+      }
+    }
+
+    function addSummaryRow(d) {
+      const tbody = document.getElementById('summaryBody');
+      const tr = document.createElement('tr');
+
+      let tabBadge = (d.docType === 'sae') 
+        ? '<span class="badge badge-sae">SAE</span>' 
+        : '<span class="badge badge-iso">ISO</span>';
+
+      let dupBadge = '<span class="badge badge-new">🟢 신규 등록</span>';
+      if (d._dupStatus === 'VARIANT_NEW') {
+        dupBadge = '<span class="badge badge-variant">🟡 변종 (별도저장)</span>';
+      } else if (d._dupStatus === 'EXACT_DUP') {
+        dupBadge = '<span class="badge badge-dup">🟠 기존 덮어쓰기</span>';
+      }
+
+      let serialInfo = '';
+      if (d.factory || d.serialStart || d.serialEnd) {
+        serialInfo = `<br><span style="font-size:11px; color:#0284c7;">[${d.factory || '-'}] #${d.serialStart || '시작'}~${d.serialEnd || '종료'}</span>`;
+      }
+
+      let detailText = (d.docType === 'sae')
+        ? `<b>${d.paramName || ''}</b><br><span style="color:#64748b;">(FMI ${(d.fmiList||[]).length}개 모드 포함)</span>`
+        : (d.event || d.compFull || '-');
+
+      tr.innerHTML = `
+        <td>${tabBadge}</td>
+        <td><b>${d.dtc}</b></td>
+        <td><b>${d.modelType || 'Volvo'}</b>${serialInfo}</td>
+        <td>${detailText}</td>
+        <td>${dupBadge}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    function clearQueue() {
+      parsedResults = [];
+      document.getElementById('queueList').innerHTML = '';
+      document.getElementById('summaryBody').innerHTML = '';
+      document.getElementById('parsedCount').innerText = '0';
+      document.getElementById('btnSaveAll').disabled = true;
+      document.getElementById('queueCard').style.display = 'none';
+      document.getElementById('status').textContent = '';
+      document.getElementById('fileInput').value = '';
+    }
+
+    function showStatus(msg, type) {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = 'status ' + type;
     }
   </script>
 </body>
