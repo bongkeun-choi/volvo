@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>볼보에러 - Volvo 진단 뷰어</title>
 
+  <!-- PWA 필수 연결 -->
   <link rel="manifest" href="manifest.json">
   <meta name="apple-mobile-web-app-title" content="볼보에러">
   <meta name="application-name" content="볼보에러">
@@ -12,7 +13,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0f172a">
 
+  <!-- 볼보에러 고해상도 앱 아이콘 -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='115' fill='%230f172a'/%3E%3Crect x='18' y='18' width='476' height='476' rx='98' fill='none' stroke='%2338bdf8' stroke-width='14'/%3E%3Ctext x='256' y='135' font-family='Arial' font-size='42' font-weight='900' fill='%23fff' text-anchor='middle'%3EVOLVO%3C/text%3E%3Cpath d='M256 160 L405 340 H107 Z' fill='none' stroke='%23f59e0b' stroke-width='22' stroke-linejoin='round'/%3E%3Crect x='243' y='210' width='26' height='70' rx='13' fill='%23fbbf24'/%3E%3Ccircle cx='256' cy='310' r='14' fill='%23fbbf24'/%3E%3Crect x='70' y='385' width='372' height='80' rx='22' fill='%23dc2626'/%3E%3Ctext x='256' y='441' font-family='sans-serif' font-size='42' font-weight='900' fill='%23fff' text-anchor='middle'%3E볼보에러%3C/text%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='115' fill='%230f172a'/%3E%3Crect x='18' y='18' width='476' height='476' rx='98' fill='none' stroke='%2338bdf8' stroke-width='14'/%3E%3Ctext x='256' y='135' font-family='Arial' font-size='42' font-weight='900' fill='%23fff' text-anchor='middle'%3EVOLVO%3C/text%3E%3Cpath d='M256 160 L405 340 H107 Z' fill='none' stroke='%23f59e0b' stroke-width='22' stroke-linejoin='round'/%3E%3Crect x='243' y='210' width='26' height='70' rx='13' fill='%23fbbf24'/%3E%3Ccircle cx='256' cy='310' r='14' fill='%23fbbf24'/%3E%3Crect x='70' y='385' width='372' height='80' rx='22' fill='%23dc2626'/%3E%3Ctext x='256' y='441' font-family='sans-serif' font-size='42' font-weight='900' fill='%23fff' text-anchor='middle'%3E볼보에러%3C/text%3E%3C/svg%3E">
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', '맑은 고딕', sans-serif; }
@@ -43,7 +46,7 @@
 
     body { background: var(--app-bg); color: #000; padding-bottom: 60px; transition: background 0.25s ease; }
 
-    /* 상단 앱 헤더 */
+    /* 상단 헤더 바 */
     .app-header {
       position: sticky; top: 0; z-index: 1000;
       background: var(--app-header-bg); color: var(--app-header-text);
@@ -60,8 +63,8 @@
     }
     .btn-install {
       background: #dc2626; border: none; color: white;
-      padding: 6px 9px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 900;
-      display: flex; align-items: center; gap: 3px;
+      padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 900;
+      display: flex; align-items: center; gap: 3px; box-shadow: 0 2px 6px rgba(220,38,38,0.35);
     }
     .btn-refresh {
       background: rgba(255,255,255,0.15); border: none; color: white;
@@ -70,7 +73,7 @@
 
     .container { padding: 14px; max-width: 840px; margin: 0 auto; }
 
-    /* 3단 모드 스위처 */
+    /* 3단 모드 선택 스위처 */
     .mode-switcher {
       display: flex; background: rgba(0,0,0,0.15); padding: 4px; border-radius: 12px;
       margin-bottom: 12px; gap: 4px;
@@ -89,7 +92,7 @@
       background: #38bdf8; color: #0f172a; box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
     }
 
-    /* 검색창 & 드롭다운 */
+    /* 검색창 */
     .search-wrapper { position: relative; margin-bottom: 10px; }
     .search-input {
       width: 100%; padding: 14px 44px 14px 16px; font-size: 16px; font-weight: 800;
@@ -110,7 +113,7 @@
     .autocomplete-item { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; cursor: pointer; font-weight: 700; color: #dc2626; }
     .autocomplete-item:hover { background: #f0f9ff; }
 
-    /* DTC 바로가기 칩 */
+    /* 바로가기 칩 */
     .chips-container { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 10px; scrollbar-width: none; }
     .chips-container::-webkit-scrollbar { display: none; }
     .chip { background: var(--chip-bg); color: var(--chip-text); padding: 6px 13px; border-radius: 16px; font-size: 12.5px; font-weight: 800; white-space: nowrap; cursor: pointer; }
@@ -118,7 +121,7 @@
     .status-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; font-size: 12px; color: var(--status-text); font-weight: 700; }
     .empty-state { text-align: center; padding: 60px 20px; color: #64748b; font-weight: 700; font-size: 14.5px; line-height: 1.6; }
 
-    /* [모드 1] 정통 매뉴얼 */
+    /* 모드 1: 정통 매뉴얼 */
     .mode-oem-sheet { background: #ffffff; padding: 30px 25px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); border: 1px solid #94a3b8; color: #000; }
     .oem-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px; }
     .oem-logo { font-size: 22px; font-weight: 900; letter-spacing: 7px; color: #000; font-family: serif; }
@@ -132,7 +135,7 @@
     .oem-stamp { text-align: right; margin-top: 18px; }
     .oem-stamp-box { display: inline-block; border: 1px solid #999; color: #777; padding: 3px 8px; border-radius: 4px; font-size: 11px; }
 
-    /* [모드 2] 모던 카드 */
+    /* 모드 2: 모던 카드 */
     .mode-card-wrap { display: flex; flex-direction: column; gap: 12px; }
     .m-card { background: #ffffff; border-radius: 12px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
     .m-hero { border-left: 5px solid #0284c7; }
@@ -151,7 +154,7 @@
     .m-pills-wrap { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
     .m-dtc-pill { background: #e0f2fe; color: #0284c7; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 800; text-decoration: none; cursor: pointer; border: 1px solid #bae6fd; }
 
-    /* [모드 3] 현장 다크 */
+    /* 모드 3: 현장 다크 */
     .mode-dark-wrap { display: flex; flex-direction: column; gap: 12px; color: #f3f4f6; }
     .d-card { background: #1e293b; border-radius: 12px; padding: 18px; border: 1px solid #334155; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
     .d-hero { border: 1.5px solid #ef4444; background: linear-gradient(180deg, #1e293b 0%, #172033 100%); }
@@ -172,7 +175,7 @@
 </head>
 <body>
 
-  <!-- 상단 앱 바 (PDF 분석 페이지 이동 버튼 추가) -->
+  <!-- 상단 앱 바 -->
   <div class="app-header">
     <div class="brand-title">
       <span>🚜</span>
@@ -180,7 +183,7 @@
     </div>
     <div class="header-btns">
       <a href="parser.html" class="btn-nav-parser">📂 PDF 분석</a>
-      <button id="btnInstallApp" class="btn-install" onclick="triggerInstallPrompt()">📲 설치</button>
+      <button id="btnInstallApp" class="btn-install" onclick="triggerInstallPrompt()">📲 앱 설치</button>
       <button class="btn-refresh" onclick="fetchData()">새로고침</button>
     </div>
   </div>
@@ -222,10 +225,12 @@
     let currentMode = localStorage.getItem('volvo_viewer_mode') || 'oem';
     let deferredPrompt = null;
 
+    // 1. Service Worker 등록 (상대 경로로 서브디렉토리 지원)
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
     }
 
+    // 2. 브라우저 정식 설치 프롬프트 캡처
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredPrompt = e;
@@ -233,10 +238,12 @@
       if (btn) btn.style.display = 'flex';
     });
 
+    // 이미 설치되어 독립 실행 중인 경우 버튼 숨김
     if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
       document.getElementById('btnInstallApp').style.display = 'none';
     }
 
+    // 3. 버튼 클릭 시 브라우저 정식 설치 팝업 호출
     async function triggerInstallPrompt() {
       if (deferredPrompt) {
         deferredPrompt.prompt();
@@ -246,7 +253,12 @@
         }
         deferredPrompt = null;
       } else {
-        alert("브라우저 우측 상단 [메뉴(⋮)]를 누른 뒤 [홈 화면에 추가] 또는 [앱 설치]를 선택해 주세요.");
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        if (isIOS) {
+          alert("아이폰(Safari): 하단 중앙 [공유(⎋)] 버튼을 누른 뒤 [홈 화면에 추가]를 선택해 주세요.");
+        } else {
+          alert("브라우저 우측 상단 [메뉴(⋮)]를 누른 뒤 [홈 화면에 추가] 또는 [앱 설치]를 선택해 주세요.");
+        }
       }
     }
 
