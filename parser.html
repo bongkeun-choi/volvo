@@ -65,7 +65,7 @@
       <div class="paste-zone" id="pasteZone" onclick="document.getElementById('fileInput').click()">
         <div class="paste-icon">📑</div>
         <div class="paste-title">파일 선택 / 드래그 또는 <span class="kbd-badge">Ctrl + V</span> 붙여넣기</div>
-        <div class="paste-desc">최신 ISO 규격(P코드) 및 구형 SAE 규격(MID/PID/FMI)을 2단 테이블까지 정밀 인식합니다.</div>
+        <div class="paste-desc">볼보 고장코드 매뉴얼 PDF 및 이미지를 고장모드(FMI/조건/증상/원인/조치)별로 정밀 파싱합니다.</div>
         <input type="file" id="fileInput" multiple accept="image/*,application/pdf" style="display: none;">
       </div>
       <div class="option-box">
@@ -118,15 +118,23 @@
     window.addEventListener('paste', (e) => {
       const items = e.clipboardData.items;
       const files = [];
-      for (let i = 0; i < items.length; i++) if (items[i].type.indexOf('image') !== -1) files.push(items[i].getAsFile());
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) files.push(items[i].getAsFile());
+      }
       if (files.length > 0) { handleMultipleFiles(files); e.preventDefault(); }
     });
 
     const pasteZone = document.getElementById('pasteZone'), fileInput = document.getElementById('fileInput');
     pasteZone.addEventListener('dragover', (e) => { e.preventDefault(); pasteZone.style.borderColor = '#0369a1'; });
     pasteZone.addEventListener('dragleave', () => { pasteZone.style.borderColor = '#0284c7'; });
-    pasteZone.addEventListener('drop', (e) => { e.preventDefault(); pasteZone.style.borderColor = '#0284c7'; if (e.dataTransfer.files.length) handleMultipleFiles(Array.from(e.dataTransfer.files)); });
-    fileInput.addEventListener('change', (e) => { if (e.target.files.length) handleMultipleFiles(Array.from(e.target.files)); });
+    pasteZone.addEventListener('drop', (e) => { 
+      e.preventDefault(); 
+      pasteZone.style.borderColor = '#0284c7'; 
+      if (e.dataTransfer.files.length) handleMultipleFiles(Array.from(e.dataTransfer.files)); 
+    });
+    fileInput.addEventListener('change', (e) => { 
+      if (e.target.files.length) handleMultipleFiles(Array.from(e.target.files)); 
+    });
 
     async function handleMultipleFiles(files) {
       if (!files || files.length === 0) return;
@@ -144,7 +152,7 @@
             updateQueueStatus(itemIndex, '이미지 OCR 분석 중...', 'processing');
             resObj = await processImageOCR(file);
           } else if (file.name.toLowerCase().endsWith('.pdf')) {
-            updateQueueStatus(itemIndex, '2D 레이아웃 공간 파싱 중...', 'processing');
+            updateQueueStatus(itemIndex, 'PDF 2단 테이블 공간 파싱 중...', 'processing');
             resObj = await processPdf(file);
           }
 
@@ -161,7 +169,12 @@
             const matchExisting = existingDbItems.filter(d => String(d.dtc || '').toUpperCase().replace(/[\s\-_]/g, '') === dtcClean);
             let dupStatus = 'NEW';
             if (matchExisting.length > 0) {
-              const exactMatch = matchExisting.find(d => String(d.modelType || '').trim() === curModel && String(d.serialStart || '').trim() === curStart && String(d.serialEnd || '').trim() === curEnd && (d.type === 'sae' || String(d.event || '').trim() === curEvent));
+              const exactMatch = matchExisting.find(d => 
+                String(d.modelType || '').trim() === curModel && 
+                String(d.serialStart || '').trim() === curStart && 
+                String(d.serialEnd || '').trim() === curEnd && 
+                (d.type === 'sae' || String(d.event || '').trim() === curEvent)
+              );
               dupStatus = exactMatch ? 'EXACT_DUP' : 'VARIANT_NEW';
             }
 
@@ -169,7 +182,7 @@
             parsedResults.push(itemToSave);
             updateQueueStatus(itemIndex, `✅ [${resObj.docType.toUpperCase()}] ${itemToSave.dtc} 완료`, 'done');
             addSummaryRow(itemToSave);
-          } else { throw new Error('DTC 코드 추출 불가'); }
+          } else { throw new Error('고장코드 추출 불가'); }
         } catch (err) { updateQueueStatus(itemIndex, `❌ 실패 (${err.message})`, 'error'); }
       }
 
@@ -203,36 +216,36 @@
           try {
             const typedarray = new Uint8Array(this.result);
             const pdf = await pdfjsLib.getDocument({ data: typedarray, disableFontFace: true }).promise;
-            let fullText = '';
             
+            let allItems = [];
+            let pageWidth = 595; // A4 기본 가로폭
+
             for (let p = 1; p <= pdf.numPages; p++) {
               const page = await pdf.getPage(p);
+              pageWidth = page.view[2] || 595; // 문서 실제 가로폭
               const content = await page.getTextContent();
-              const items = content.items.map(it => ({
-                str: it.str.trim(),
-                x: it.transform[4],
-                y: it.transform[5]
-              })).filter(it => it.str.length > 0);
-
-              items.sort((a, b) => (b.y - a.y) || (a.x - b.x));
-              let lines = [], currY = null, currLine = [];
-              for (let it of items) {
-                if (currY === null || Math.abs(it.y - currY) > 5) {
-                  if (currLine.length) lines.push(currLine.join('\t'));
-                  currLine = [it.str];
-                  currY = it.y;
-                } else {
-                  currLine.push(it.str);
+              
+              content.items.forEach(it => {
+                const str = it.str.trim();
+                if (str.length > 0) {
+                  allItems.push({
+                    str: str,
+                    x: it.transform[4],
+                    y: it.transform[5] + (pdf.numPages - p) * 1000 // 페이지별 수직 좌표 보정
+                  });
                 }
-              }
-              if (currLine.length) lines.push(currLine.join('\t'));
-              fullText += lines.join('\n') + '\n';
+              });
             }
 
-            const clean = (s) => s ? s.replace(/\r?\n+/g, ' ').replace(/\s+/g, ' ').trim() : '';
+            // 상단 -> 하단, 좌측 -> 우측 정렬
+            allItems.sort((a, b) => (b.y - a.y) || (a.x - b.x));
+            const fullText = allItems.map(it => it.str).join(' ');
+            const midX = pageWidth / 2; // 좌측(증상)/우측(원인) 판별선
+
             const isSae = /MID\s*\d+|PID\s*\d+|SID\s*\d+|FMI\s*\d+/i.test(fullText);
 
             if (isSae) {
+              // 1. 에러코드 및 디스플레이 메시지 추출
               const midMatch = fullText.match(/MID\s*(\d+)/i);
               const pidMatch = fullText.match(/(PID|PPID|SID|PSID)\s*(\d+)/i);
               const mid = midMatch ? midMatch[1] : '128';
@@ -241,74 +254,89 @@
               const dtc = `MID${mid} ${pidType}${pid}`;
 
               let displayMsg = `${mid} ${pidType}${pid}`;
-              const mDisp = fullText.match(/텍스트\s*프레젠테이션[\s\t]+([^\r\n]+)/i);
-              if (mDisp) displayMsg = clean(mDisp[1]);
+              const mDisp = fullText.match(/텍스트\s*프레젠테이션[\s\t]+([0-9A-Z\s]+)/i);
+              if (mDisp) displayMsg = mDisp[1].trim();
 
+              // 2. 모델 종류 및 생산 사업장, 일련번호
               let modelType = 'EW145B Volvo', factory = 'Changwon', serialStart = '15001', serialEnd = '210000';
               const mSer = fullText.match(/([A-Z0-9]+\s+Volvo)[\s\t]+([A-Za-z가-힣]+)[\s\t]+(\d{4,8})[\s\t]+(\d{4,8})/);
               if (mSer) {
-                modelType = clean(mSer[1]); factory = clean(mSer[2]); serialStart = clean(mSer[3]); serialEnd = clean(mSer[4]);
+                modelType = mSer[1].trim(); 
+                factory = mSer[2].trim(); 
+                serialStart = mSer[3].trim(); 
+                serialEnd = mSer[4].trim();
               }
 
+              // 3. 컨트롤 유니트
               let ecu = `MID${mid} 엔진 ECU`;
-              const mEcu = fullText.match(/MID[\/\s]*컨트롤\s*유니트[\s\t]+([^\r\n]+)/i);
-              if (mEcu) ecu = clean(mEcu[1]);
-
-              let paramName = `${pidType}${pid} 엔진 오일 압력`;
-              const mParam = fullText.match(/(?:PID\/PPID\/SID\/PSID|PID|PPID|SID|PSID)[\s\t]+([^\r\n]+)/i);
-              if (mParam) {
-                let pTxt = clean(mParam[1]).replace(new RegExp(`^${pidType}\\s*${pid}`, 'i'), '').trim();
-                paramName = `${pidType}${pid} ${pTxt}`.replace(/^[:\s\-]+/, '').trim();
+              const mEcu = fullText.match(/MID[\/\s]*컨트롤\s*유니트[\s\t]+([^\n\r]+?)(?=(?:PID|PPID|SID|장비|$))/i);
+              if (mEcu) {
+                const ecuClean = mEcu[1].replace(/MID\d+/g, '').replace(/^[:\s\-]+/, '').trim();
+                ecu = `MID${mid} ${ecuClean}`;
               }
 
+              // 4. 파라미터명
+              let paramName = `${pidType}${pid} 엔진 오일 압력`;
+              const mParam = fullText.match(/(?:PID\/PPID\/SID\/PSID|PID|PPID|SID|PSID)[\s\t]+([^\n\r]+?)(?=(?:장비|텍스트|기준|$))/i);
+              if (mParam) {
+                const pClean = mParam[1].replace(new RegExp(`^${pidType}\\s*${pid}`, 'i'), '').replace(/^[:\s\-]+/, '').trim();
+                paramName = `${pidType}${pid} ${pClean}`;
+              }
+
+              // 5. 기준 매뉴얼
               let standard = '';
-              const mStd = fullText.match(/기준[\s\t]+([^\r\n]+)/);
-              if (mStd && !mStd[1].includes('고장 모드') && !mStd[1].includes('진단')) standard = clean(mStd[1]);
+              const mStd = fullText.match(/기준[\s\t]+([^\n\r]+?)(?=(?:고장\s*모드|진단|$))/i);
+              if (mStd && !mStd[1].includes('고장 모드')) standard = mStd[1].trim();
 
-              const fmiMatches = fullText.match(/FMI\s*(\d+)/gi) || ['FMI 3', 'FMI 5'];
-              const uniqueFmis = Array.from(new Set(fmiMatches.map(m => m.replace(/\D/g, '')).filter(Boolean)));
-
+              // 6. FMI 모드별 블록 분리 및 좌/우 컬럼 정밀 파싱
+              const fmiHeaders = allItems.filter(it => /^FMI\s*(\d+)$/i.test(it.str) || /고장\s*모드\s*FMI\s*(\d+)/i.test(it.str));
               const fmiList = [];
-              for (let fmi of uniqueFmis) {
-                const secRegex = new RegExp("FMI\\s*" + fmi + "([\\s\\S]*?)(?=(?:고장\\s*모드\\s*FMI\\s*\\d+|FMI\\s*\\d+|Guided Diagnostics|$))", "i");
-                const secMatch = fullText.match(secRegex);
-                const block = secMatch ? secMatch[1] : '';
 
+              for (let i = 0; i < fmiHeaders.length; i++) {
+                const curH = fmiHeaders[i];
+                const fmiNum = (curH.str.match(/\d+/) || ['3'])[0];
+                const topY = curH.y + 12;
+                const bottomY = (i < fmiHeaders.length - 1) ? fmiHeaders[i + 1].y + 12 : 0;
+
+                const block = allItems.filter(it => it.y <= topY && it.y > bottomY);
+
+                // [탐지 조건]
                 let cond = '-';
-                const mCond = block.match(/탐지\s*조건:?[\s\t]*([^\r\n]+)/i);
-                if (mCond) cond = clean(mCond[1]);
-
-                let actions = displayMsg;
-                const mAct = block.match(/조치[\s\t]+([^\r\n]+)/i);
-                if (mAct) actions = clean(mAct[1]);
-
-                let symptomArr = [], causesArr = [];
-                const lines = block.split('\n');
-
-                for (let line of lines) {
-                  if (line.includes('탐지 조건') || line.includes('조치') || line.includes('고장 모드')) continue;
-                  
-                  const parts = line.split('\t').map(p => clean(p)).filter(Boolean);
-                  if (parts.length >= 2) {
-                    let left = parts[0].replace(/^증상:?/, '').replace(/^[○•●\s\-]+/, '').trim();
-                    let right = parts[1].replace(/^가능한\s*이유:?/, '').replace(/^[○•●\s\-]+/, '').trim();
-                    if (left && left !== '증상' && left !== '없음') symptomArr.push(left);
-                    if (right && right !== '가능한 이유' && right !== '없음') causesArr.push(right);
-                  } else if (parts.length === 1) {
-                    let text = parts[0];
-                    if (text.includes('경고등') || text.includes('버져') || text.includes('메시지 화면')) {
-                      symptomArr.push(text.replace(/^[○•●\s\-]+/, '').trim());
-                    } else if (text.includes('단락') || text.includes('개회로') || text.includes('센서') || text.includes('케이블')) {
-                      causesArr.push(text.replace(/^[○•●\s\-]+/, '').trim());
-                    }
-                  }
+                const condItems = block.filter(it => it.str.includes('감지') || it.str.includes('전압') || it.str.includes('탐지'));
+                if (condItems.length > 0) {
+                  cond = condItems.map(it => it.str).join(' ').replace(/.*탐지\s*조건:?/g, '').trim();
                 }
 
+                // [조치 링크]
+                let actions = displayMsg;
+                const actIdx = block.findIndex(it => it.str.includes('조치'));
+                if (actIdx !== -1 && actIdx + 1 < block.length) {
+                  const actItems = block.slice(actIdx + 1).filter(it => Math.abs(it.y - block[actIdx].y) < 15);
+                  if (actItems.length) actions = actItems.map(it => it.str).join(' ').trim();
+                }
+
+                // [증상] 좌측 바구니 (X < midX), [가능한 이유] 우측 바구니 (X >= midX)
+                const symList = [], causeList = [];
+
+                block.forEach(it => {
+                  if (it.str.includes('FMI') || it.str.includes('고장 모드') || it.str.includes('탐지 조건') || 
+                      it.str.includes('조치') || it.str === actions || it.str.includes('감지됨')) return;
+
+                  const cleanTxt = it.str.replace(/^[○•●\s\-:]+/, '').trim();
+                  if (!cleanTxt || cleanTxt === '증상' || cleanTxt === '가능한 이유') return;
+
+                  if (it.x < midX) {
+                    symList.push(cleanTxt);
+                  } else {
+                    causeList.push(cleanTxt);
+                  }
+                });
+
                 fmiList.push({
-                  fmi: fmi,
-                  cond: cond,
-                  symptom: symptomArr.length > 0 ? Array.from(new Set(symptomArr)).join(' | ') : '없음',
-                  causes: causesArr.length > 0 ? Array.from(new Set(causesArr)).join(' | ') : '없음',
+                  fmi: fmiNum,
+                  cond: cond || '-',
+                  symptom: symList.length ? Array.from(new Set(symList)).join(' | ') : '없음',
+                  causes: causeList.length ? Array.from(new Set(causeList)).join(' | ') : '없음',
                   actions: actions || displayMsg
                 });
               }
@@ -322,6 +350,7 @@
                 }
               });
             } else {
+              // ISO 단일 고장코드 파싱
               const dtcMatch = fullText.match(/([P|U|B|C][0-9A-Z]{5,7})/);
               resolve({
                 docType: 'iso',
@@ -353,7 +382,7 @@
         if (targetItems.length === 0) { alert('저장할 신규 항목이 없습니다.'); btn.disabled = false; return; }
       }
 
-      showStatus(`구글 시트에 ${targetItems.length}건 정밀 저장 중...`, 'loading');
+      showStatus(`구글 시트에 ${targetItems.length}건 저장 중...`, 'loading');
       let savedCount = 0;
       for (let item of targetItems) {
         try {
@@ -363,7 +392,7 @@
         } catch (err) { console.error(err); }
       }
       await fetchExistingDb();
-      showStatus(`🎉 총 ${savedCount}건의 진단서가 시트 탭에 안전하게 저장되었습니다!`, 'success');
+      showStatus(`🎉 총 ${savedCount}건의 진단서가 시트에 정상 저장되었습니다!`, 'success');
       btn.disabled = false;
     }
 
@@ -395,12 +424,20 @@
 
     function clearQueue() {
       parsedResults = [];
-      document.getElementById('queueList').innerHTML = ''; document.getElementById('summaryBody').innerHTML = '';
-      document.getElementById('parsedCount').innerText = '0'; document.getElementById('btnSaveAll').disabled = true;
-      document.getElementById('queueCard').style.display = 'none'; document.getElementById('status').textContent = ''; document.getElementById('fileInput').value = '';
+      document.getElementById('queueList').innerHTML = ''; 
+      document.getElementById('summaryBody').innerHTML = '';
+      document.getElementById('parsedCount').innerText = '0'; 
+      document.getElementById('btnSaveAll').disabled = true;
+      document.getElementById('queueCard').style.display = 'none'; 
+      document.getElementById('status').textContent = ''; 
+      document.getElementById('fileInput').value = '';
     }
 
-    function showStatus(msg, type) { const el = document.getElementById('status'); el.textContent = msg; el.className = 'status ' + type; }
+    function showStatus(msg, type) { 
+      const el = document.getElementById('status'); 
+      el.textContent = msg; 
+      el.className = 'status ' + type; 
+    }
   </script>
 </body>
 </html>
