@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>볼보 DTC 화면 캡처 & PDF 분석기</title>
+  <title>볼보 DTC 다중 파일 & 화면 캡처 통합 분석기</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', sans-serif; }
@@ -26,44 +26,52 @@
     label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 13.5px; }
     input[type="text"] { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; }
     
-    /* 캡처 붙여넣기 & 드래그 영역 */
+    /* 캡처 붙여넣기 & 다중 드래그 존 */
     .paste-zone {
-      border: 2.5px dashed #0284c7; padding: 45px 15px; text-align: center; border-radius: 14px;
+      border: 2.5px dashed #0284c7; padding: 40px 15px; text-align: center; border-radius: 14px;
       cursor: pointer; background: #f0f9ff; transition: all 0.2s;
     }
     .paste-zone:hover { background: #e0f2fe; border-color: #0369a1; }
-    .paste-icon { font-size: 40px; margin-bottom: 10px; }
-    .paste-title { font-size: 17px; font-weight: 900; color: #0284c7; margin-bottom: 6px; }
+    .paste-icon { font-size: 38px; margin-bottom: 8px; }
+    .paste-title { font-size: 16.5px; font-weight: 900; color: #0284c7; margin-bottom: 6px; }
     .paste-desc { font-size: 13px; color: #64748b; line-height: 1.5; }
     .kbd-badge { background: #0f172a; color: white; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-weight: bold; }
 
-    /* 이미지 미리보기 썸네일 */
-    .img-preview-box { text-align: center; margin-top: 15px; display: none; }
-    .img-preview-box img { max-width: 100%; max-height: 250px; border-radius: 8px; border: 1px solid #cbd5e1; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+    /* 대기열 목록 */
+    .queue-card { display: none; }
+    .queue-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .queue-title { font-size: 15px; font-weight: 800; color: #0f172a; }
+    .queue-list { display: flex; flex-direction: column; gap: 8px; max-height: 350px; overflow-y: auto; margin-bottom: 14px; }
+    .queue-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 14px; background: #f1f5f9; border-radius: 8px; font-size: 13px; font-weight: 700;
+    }
+    .queue-item.done { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .queue-item.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .queue-item.processing { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
 
-    /* 상태 텍스트 */
-    .status { margin-top: 15px; font-weight: bold; font-size: 14px; text-align: center; }
-    .success { color: #16a34a; }
-    .error { color: #dc2626; }
-    .loading { color: #0284c7; }
+    /* 테이블 */
+    table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12.5px; }
+    th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; }
+    th { background: #f8fafc; font-weight: 700; color: #475569; }
 
-    /* 미리보기 테이블 */
-    table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
-    th, td { border: 1px solid #cbd5e1; padding: 10px 12px; text-align: left; }
-    th { background: #f8fafc; font-weight: 700; color: #475569; width: 28%; }
-    td { background: #ffffff; line-height: 1.5; font-weight: 500; }
-
-    .btn-group { display: flex; gap: 10px; margin-top: 18px; }
+    .btn-group { display: flex; gap: 10px; margin-top: 16px; }
     .btn { flex: 1; padding: 13px; border: none; border-radius: 8px; font-size: 14px; font-weight: 800; cursor: pointer; text-align: center; }
     .btn-primary { background: #0284c7; color: white; }
-    .btn-warning { background: #f59e0b; color: white; }
+    .btn-success { background: #16a34a; color: white; }
     .btn-secondary { background: #64748b; color: white; }
+    .btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+
+    .status { margin-top: 12px; font-weight: bold; font-size: 13.5px; text-align: center; }
+    .status.success { color: #16a34a; }
+    .status.error { color: #dc2626; }
+    .status.loading { color: #0284c7; }
   </style>
 </head>
 <body>
 
   <div class="app-header">
-    <h1>🛠️ 볼보 DTC 화면 캡처 & 분석기</h1>
+    <h1>🛠️ 볼보 DTC 다중 파일 & 화면 캡처 통합 분석기</h1>
     <a href="index.html" class="btn-home">🔍 진단서 조회 (홈)</a>
   </div>
 
@@ -74,72 +82,72 @@
         <input type="text" id="scriptUrl" value="https://script.google.com/macros/s/AKfycbzV5H2kowUqmGNO2UloeU_2OMYT0ZbyyzsS3iN4LXLhY_WvZ1maxiIOZ9jvvCg99aM/exec">
       </div>
       
-      <!-- 캡처 붙여넣기 및 파일 드래그 존 -->
+      <!-- 다중 파일 드래그 및 캡처 붙여넣기 영역 -->
       <div class="paste-zone" id="pasteZone" onclick="document.getElementById('fileInput').click()">
-        <div class="paste-icon">📋</div>
-        <div class="paste-title">화면 캡처 후 여기서 <span class="kbd-badge">Ctrl + V</span> 를 누르세요</div>
+        <div class="paste-icon">📑</div>
+        <div class="paste-title">여러 개 파일 선택 / 드래그 또는 <span class="kbd-badge">Ctrl + V</span> 붙여넣기</div>
         <div class="paste-desc">
-          또는 클릭하여 <b>이미지(.png, .jpg)</b> 또는 <b>PDF 파일</b>을 선택하세요 (드래그 앤 드롭 지원)
+          <b>PDF 문서</b> 및 <b>캡처 이미지(.png, .jpg)</b>를 <b>여러 개 동시 선택</b>하여 일괄 분석할 수 있습니다.
         </div>
-        <input type="file" id="fileInput" accept="image/*,application/pdf" style="display: none;">
-      </div>
-
-      <div class="img-preview-box" id="imgPreviewBox">
-        <img id="captureImg" src="" alt="캡처 이미지 미리보기">
+        <!-- multiple 속성 추가 -->
+        <input type="file" id="fileInput" multiple accept="image/*,application/pdf" style="display: none;">
       </div>
 
       <div id="status" class="status"></div>
     </div>
 
-    <!-- 14개 필드 분석 결과 카드 -->
-    <div class="card" id="resultCard" style="display: none;">
-      <h3 style="font-size: 16px; font-weight: 800; margin-bottom: 6px;">🔍 분석된 DTC 데이터 (14개 필드)</h3>
-      <table id="previewTable"></table>
+    <!-- 다중 분석 대기열 및 결과 카드 -->
+    <div class="card queue-card" id="queueCard">
+      <div class="queue-header">
+        <span class="queue-title">📋 분석 대기열 및 추출 현황 (<span id="parsedCount">0</span>건)</span>
+        <button class="btn-home" style="background:#64748b; font-size:11.5px;" onclick="clearQueue()">목록 초기화</button>
+      </div>
+
+      <div class="queue-list" id="queueList"></div>
+
+      <!-- 요약 테이블 -->
+      <table id="summaryTable">
+        <thead>
+          <tr>
+            <th style="width: 15%;">에러코드</th>
+            <th style="width: 20%;">기종</th>
+            <th style="width: 25%;">고장 유형</th>
+            <th style="width: 25%;">고장 이벤트</th>
+            <th style="width: 15%;">상태</th>
+          </tr>
+        </thead>
+        <tbody id="summaryBody"></tbody>
+      </table>
 
       <div class="btn-group">
-        <button id="btnSave" class="btn btn-primary" onclick="saveToGoogleSheet()">구글 시트에 저장하기</button>
-        <button class="btn btn-secondary" onclick="resetForm()">초기화</button>
+        <button id="btnSaveAll" class="btn btn-success" onclick="saveAllToGoogleSheet()" disabled>
+          💾 분석된 모든 데이터 구글 시트에 일괄 저장
+        </button>
       </div>
     </div>
   </div>
 
   <script>
     if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = '';
-    let parsedData = null;
+    let parsedResults = [];
+    let isProcessing = false;
 
-    const fieldLabels = [
-      { key: 'dtc', label: '에러코드' },
-      { key: 'modelType', label: '모델 종류' },
-      { key: 'factory', label: '생산 사업장' },
-      { key: 'serialStart', label: '일련 번호 시작' },
-      { key: 'serialEnd', label: '일련 번호 종료' },
-      { key: 'ecu', label: '컨트롤 유니트' },
-      { key: 'compFull', label: 'DTC 코드, 시스템/구성부품, 고장유형' },
-      { key: 'standard', label: '기준' },
-      { key: 'event', label: '고장이벤트' },
-      { key: 'symptom', label: '증상' },
-      { key: 'condition', label: '조건' },
-      { key: 'preDtc', label: '선행조치DTC' },
-      { key: 'causes', label: '가능한 이유' },
-      { key: 'actions', label: '조치' }
-    ];
-
-    // ==========================================
-    // 1. 키보드 Ctrl + V 클립보드 이미지 자동 감지
-    // ==========================================
+    // 1. 키보드 Ctrl + V 클립보드 이미지 캡처 처리
     window.addEventListener('paste', (e) => {
       const items = e.clipboardData.items;
+      const files = [];
       for (let i = 0; i < items.length; i++) {
         if (items[i].type.indexOf('image') !== -1) {
-          const blob = items[i].getAsFile();
-          handleImageFile(blob);
-          e.preventDefault();
-          break;
+          files.push(items[i].getAsFile());
         }
+      }
+      if (files.length > 0) {
+        handleMultipleFiles(files);
+        e.preventDefault();
       }
     });
 
-    // 2. 파일 드래그 & 클릭 선택 처리
+    // 2. 다중 파일 드래그 앤 드롭 & 파일 선택 처리
     const pasteZone = document.getElementById('pasteZone');
     const fileInput = document.getElementById('fileInput');
 
@@ -148,151 +156,197 @@
     pasteZone.addEventListener('drop', (e) => {
       e.preventDefault();
       pasteZone.style.borderColor = '#0284c7';
-      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+      if (e.dataTransfer.files.length) handleMultipleFiles(Array.from(e.dataTransfer.files));
     });
     fileInput.addEventListener('change', (e) => {
-      if (e.target.files.length) handleFile(e.target.files[0]);
+      if (e.target.files.length) handleMultipleFiles(Array.from(e.target.files));
     });
 
-    function handleFile(file) {
-      if (file.type.startsWith('image/')) {
-        handleImageFile(file);
-      } else if (file.name.toLowerCase().endsWith('.pdf')) {
-        handlePdfFile(file);
-      } else {
-        alert('이미지(.png, .jpg) 또는 PDF 파일만 지원합니다.');
-      }
-    }
+    async function handleMultipleFiles(files) {
+      if (!files || files.length === 0) return;
+      document.getElementById('queueCard').style.display = 'block';
+      
+      showStatus(`${files.length}개 파일 순차 분석 시작...`, 'loading');
 
-    // 이미지 파일 -> Base64 변환 후 클라우드 OCR 요청
-    function handleImageFile(file) {
-      showStatus('📸 캡처 이미지 분석 중... (클라우드 OCR)', 'loading');
-      document.getElementById('resultCard').style.display = 'none';
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const itemIndex = parsedResults.length;
+        
+        // 큐 UI 항목 추가
+        addQueueItemUI(itemIndex, file.name || `캡처 이미지 #${itemIndex + 1}`);
 
-      // 썸네일 미리보기 표시
-      const previewBox = document.getElementById('imgPreviewBox');
-      const img = document.getElementById('captureImg');
-      img.src = URL.createObjectURL(file);
-      previewBox.style.display = 'block';
-
-      const reader = new FileReader();
-      reader.onload = async function() {
         try {
-          const base64Data = reader.result.split(',')[1];
-          const url = document.getElementById('scriptUrl').value.trim();
+          let parsedItem = null;
+          if (file.type.startsWith('image/')) {
+            updateQueueStatus(itemIndex, '이미지 OCR 분석 중...', 'processing');
+            parsedItem = await processImageOCR(file);
+          } else if (file.name.toLowerCase().endsWith('.pdf')) {
+            updateQueueStatus(itemIndex, 'PDF 레이아웃 분석 중...', 'processing');
+            parsedItem = await processPdf(file);
+          }
 
-          const response = await fetch(url, {
-            method: 'POST',
-            body: JSON.stringify({
-              action: 'parse_image',
-              imageBase64: base64Data,
-              mimeType: file.type || 'image/png'
-            })
-          });
-
-          const resJson = await response.json();
-          if (resJson.status === 'success' && resJson.parsed) {
-            parsedData = resJson.parsed;
-            renderPreviewTable(parsedData);
-            showStatus(`✅ 캡처 화면에서 고장 코드 [${parsedData.dtc}] 분석 완료!`, 'success');
+          if (parsedItem && parsedItem.dtc) {
+            parsedResults.push(parsedItem);
+            updateQueueStatus(itemIndex, `✅ ${parsedItem.dtc} 완료`, 'done');
+            addSummaryRow(parsedItem);
           } else {
-            throw new Error(resJson.error || '텍스트를 읽지 못했습니다.');
+            throw new Error('DTC 코드 추출 불가');
           }
         } catch (err) {
-          showStatus('❌ 분석 실패: ' + err.message, 'error');
+          updateQueueStatus(itemIndex, `❌ 실패 (${err.message})`, 'error');
         }
-      };
-      reader.readAsDataURL(file);
+      }
+
+      document.getElementById('parsedCount').innerText = parsedResults.length;
+      document.getElementById('btnSaveAll').disabled = parsedResults.length === 0;
+      showStatus(`총 ${parsedResults.length}건 분석 완료! [일괄 저장]을 눌러 시트에 등록하세요.`, 'success');
+      fileInput.value = '';
     }
 
-    // PDF 파일 처리
-    async function handlePdfFile(file) {
-      showStatus('📄 PDF 문서 레이아웃 분석 중...', 'loading');
-      document.getElementById('imgPreviewBox').style.display = 'none';
-      document.getElementById('resultCard').style.display = 'none';
+    // 개별 이미지 클라우드 OCR 요청
+    function processImageOCR(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = async function() {
+          try {
+            const base64Data = reader.result.split(',')[1];
+            const url = document.getElementById('scriptUrl').value.trim();
 
-      const reader = new FileReader();
-      reader.onload = async function() {
-        try {
-          const typedarray = new Uint8Array(this.result);
-          const pdf = await pdfjsLib.getDocument({ data: typedarray, disableFontFace: true }).promise;
-          let fullText = '';
+            const response = await fetch(url, {
+              method: 'POST',
+              body: JSON.stringify({
+                action: 'parse_image',
+                imageBase64: base64Data,
+                mimeType: file.type || 'image/png'
+              })
+            });
 
-          for (let p = 1; p <= pdf.numPages; p++) {
-            const page = await pdf.getPage(p);
-            const content = await page.getTextContent();
-            const items = content.items.map(it => ({ str: it.str.trim(), x: it.transform[4], y: it.transform[5] })).filter(it => it.str.length > 0);
-            items.sort((a, b) => (b.y - a.y) || (a.x - b.x));
-
-            let lines = [], currY = null, currLine = [];
-            for (let it of items) {
-              if (currY === null || Math.abs(it.y - currY) > 4) {
-                if (currLine.length) lines.push(currLine.join(' '));
-                currLine = [it.str];
-                currY = it.y;
-              } else {
-                currLine.push(it.str);
-              }
+            const resJson = await response.json();
+            if (resJson.status === 'success' && resJson.parsed) {
+              resolve(resJson.parsed);
+            } else {
+              reject(new Error(resJson.error || '파싱 실패'));
             }
-            if (currLine.length) lines.push(currLine.join(' '));
-            fullText += lines.join('\n') + '\n';
+          } catch (err) {
+            reject(err);
           }
-
-          // 클라이언트 파서 호출
-          parsedData = parseExact14FieldsClient(fullText);
-          renderPreviewTable(parsedData);
-          showStatus(`✅ PDF에서 고장 코드 [${parsedData.dtc}] 분석 완료!`, 'success');
-        } catch (err) {
-          showStatus('❌ PDF 분석 실패: ' + err.message, 'error');
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    }
-
-    function renderPreviewTable(data) {
-      const table = document.getElementById('previewTable');
-      table.innerHTML = '';
-      fieldLabels.forEach(item => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<th>${item.label}</th><td>${data[item.key] || '-'}</td>`;
-        table.appendChild(tr);
+        };
+        reader.readAsDataURL(file);
       });
-      document.getElementById('resultCard').style.display = 'block';
     }
 
-    async function saveToGoogleSheet() {
-      if (!parsedData) return;
+    // 개별 PDF 분석
+    function processPdf(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = async function() {
+          try {
+            const typedarray = new Uint8Array(this.result);
+            const pdf = await pdfjsLib.getDocument({ data: typedarray, disableFontFace: true }).promise;
+            let fullText = '';
+
+            for (let p = 1; p <= pdf.numPages; p++) {
+              const page = await pdf.getPage(p);
+              const content = await page.getTextContent();
+              const items = content.items.map(it => ({ str: it.str.trim(), x: it.transform[4], y: it.transform[5] })).filter(it => it.str.length > 0);
+              items.sort((a, b) => (b.y - a.y) || (a.x - b.x));
+
+              let lines = [], currY = null, currLine = [];
+              for (let it of items) {
+                if (currY === null || Math.abs(it.y - currY) > 4) {
+                  if (currLine.length) lines.push(currLine.join(' '));
+                  currLine = [it.str];
+                  currY = it.y;
+                } else {
+                  currLine.push(it.str);
+                }
+              }
+              if (currLine.length) lines.push(currLine.join(' '));
+              fullText += lines.join('\n') + '\n';
+            }
+
+            const parsed = parseExact14FieldsClient(fullText);
+            resolve(parsed);
+          } catch (err) {
+            reject(err);
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    // ==========================================
+    // 💾 구글 시트 일괄 저장 (Batch Save)
+    // ==========================================
+    async function saveAllToGoogleSheet() {
+      if (parsedResults.length === 0) return;
       const url = document.getElementById('scriptUrl').value.trim();
-      const btn = document.getElementById('btnSave');
+      const btn = document.getElementById('btnSaveAll');
       btn.disabled = true;
-      showStatus('구글 시트에 저장 중...', 'loading');
+      showStatus(`구글 시트에 ${parsedResults.length}건 일괄 저장 중...`, 'loading');
 
-      try {
-        const formData = new URLSearchParams();
-        for (let k in parsedData) {
-          formData.append(k, parsedData[k] || '');
+      let savedCount = 0;
+      for (let item of parsedResults) {
+        try {
+          const formData = new URLSearchParams();
+          for (let k in item) {
+            formData.append(k, item[k] || '');
+          }
+          formData.append('mode', 'overwrite');
+
+          await fetch(url, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: formData.toString()
+          });
+          savedCount++;
+        } catch (err) {
+          console.error(err);
         }
-        formData.append('mode', 'overwrite'); // 동일 DTC 존재 시 덮어쓰기
+      }
 
-        await fetch(url, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: formData.toString()
-        });
+      showStatus(`🎉 총 ${savedCount}건의 진단서가 구글 시트에 안전하게 저장되었습니다!`, 'success');
+      btn.disabled = false;
+    }
 
-        showStatus(`✅ 구글 시트에 [${parsedData.dtc}] 진단서가 안전하게 저장되었습니다!`, 'success');
-        btn.disabled = false;
-      } catch (err) {
-        showStatus('❌ 저장 실패: ' + err.message, 'error');
-        btn.disabled = false;
+    function addQueueItemUI(idx, name) {
+      const qList = document.getElementById('queueList');
+      const div = document.createElement('div');
+      div.id = `qItem_${idx}`;
+      div.className = 'queue-item processing';
+      div.innerHTML = `<span>📄 ${name}</span><span class="status-badge">분석 준비 중...</span>`;
+      qList.appendChild(div);
+    }
+
+    function updateQueueStatus(idx, msg, type) {
+      const el = document.getElementById(`qItem_${idx}`);
+      if (el) {
+        el.className = `queue-item ${type}`;
+        el.querySelector('.status-badge').innerText = msg;
       }
     }
 
-    function resetForm() {
-      parsedData = null;
-      document.getElementById('imgPreviewBox').style.display = 'none';
-      document.getElementById('resultCard').style.display = 'none';
+    function addSummaryRow(d) {
+      const tbody = document.getElementById('summaryBody');
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><b>${d.dtc}</b></td>
+        <td>${d.modelType || '-'}</td>
+        <td>${d.compFull || '-'}</td>
+        <td>${d.event || '-'}</td>
+        <td style="color:#16a34a; font-weight:bold;">준비 완료</td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    function clearQueue() {
+      parsedResults = [];
+      document.getElementById('queueList').innerHTML = '';
+      document.getElementById('summaryBody').innerHTML = '';
+      document.getElementById('parsedCount').innerText = '0';
+      document.getElementById('btnSaveAll').disabled = true;
+      document.getElementById('queueCard').style.display = 'none';
       document.getElementById('status').textContent = '';
       document.getElementById('fileInput').value = '';
     }
@@ -303,10 +357,10 @@
       el.className = 'status ' + type;
     }
 
-    // PDF용 보조 정규식 파서
+    // PDF 파서 정규식 보조 엔진
     function parseExact14FieldsClient(text) {
       const clean = (s) => s ? s.replace(/\n+/g, ' ').trim() : '';
-      const dtcMatch = text.match(/([P|U|B|C][0-9A-Z]{5,6}|PID\s*\d+|SE\d+-\d+)/);
+      const dtcMatch = text.match(/([P|U|B|C][0-9A-Z]{5,7}|PID\s*\d+|SE\d+-\d+)/);
       const dtc = dtcMatch ? dtcMatch[1].replace(/\s+/g, '') : '코드미상';
 
       let modelType = 'EW140E Volvo', factory = '', serialStart = '', serialEnd = '';
@@ -354,9 +408,9 @@
       const preMatch = text.match(/선행조치\s*DTC[\s\S]*?(?=가능한\s*이유|$)/);
       let preDtc = '없음';
       if (preMatch) {
-        const codes = preMatch[0].match(/([A-Z][0-9A-Z]{5,6})/g) || [];
-        const validCodes = codes.filter(c => c !== 'DTC' && c !== 'ISO' && !c.startsWith('DTC'));
-        const uniqueCodes = [...new Set(validCodes)];
+        const codes = preMatch[0].match(/([P|U|B|C][0-9A-Z]{5,7})/g) || [];
+        const validCodes = codes.filter(c => c !== dtc && !c.startsWith('DTC'));
+        const uniqueCodes = Array.from(new Set(validCodes));
         if (uniqueCodes.length > 0) preDtc = uniqueCodes.join(' | ');
       }
 
