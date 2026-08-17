@@ -13,6 +13,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0f172a">
 
+  <!-- Cropper.js (이미지 영역 크롭 라이브러리) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+
   <!-- Tesseract.js (무료 브라우저 OCR 엔진) -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
@@ -49,7 +53,7 @@
 
     body { background: var(--app-bg); color: #000; padding-bottom: 60px; transition: background 0.25s ease; }
 
-    /* 상단 앱 바 */
+    /* 상단 헤더 */
     .app-header {
       position: sticky; top: 0; z-index: 1000;
       background: var(--app-header-bg); color: var(--app-header-text);
@@ -76,7 +80,7 @@
 
     .container { padding: 14px; max-width: 840px; margin: 0 auto; }
 
-    /* 3단 모드 선택 스위처 */
+    /* 3단 모드 스위처 */
     .mode-switcher {
       display: flex; background: rgba(0,0,0,0.15); padding: 4px; border-radius: 12px;
       margin-bottom: 12px; gap: 4px;
@@ -136,11 +140,38 @@
     .status-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; font-size: 12px; color: var(--status-text); font-weight: 700; }
     .empty-state { text-align: center; padding: 60px 20px; color: #64748b; font-weight: 700; font-size: 14.5px; line-height: 1.6; }
 
-    /* OCR 로딩 모달 */
+    /* ========================================================
+       📷 사진 크롭(영역 지정) 모달 CSS
+    ======================================================== */
+    .crop-modal {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.9); display: none; flex-direction: column;
+      z-index: 99999; padding: 12px;
+    }
+    .crop-header {
+      color: white; text-align: center; font-size: 14px; font-weight: 800;
+      padding: 10px 0; background: rgba(0,0,0,0.4); border-radius: 8px; margin-bottom: 8px;
+    }
+    .crop-body {
+      flex: 1; position: relative; max-height: calc(100vh - 140px);
+      overflow: hidden; background: #000; border-radius: 10px;
+    }
+    .crop-body img { max-width: 100%; display: block; }
+    .crop-footer {
+      display: flex; gap: 10px; padding-top: 10px;
+    }
+    .btn-crop-action {
+      flex: 1; padding: 13px; border: none; border-radius: 10px;
+      font-size: 14.5px; font-weight: 900; cursor: pointer; text-align: center;
+    }
+    .btn-crop-confirm { background: #0284c7; color: white; }
+    .btn-crop-cancel { background: #475569; color: white; }
+
+    /* OCR 처리 중 로딩 팝업 */
     .ocr-modal {
       position: fixed; top: 0; left: 0; right: 0; bottom: 0;
       background: rgba(0,0,0,0.75); display: none; align-items: center; justify-content: center;
-      z-index: 9999; padding: 20px;
+      z-index: 999999; padding: 20px;
     }
     .ocr-modal-content {
       background: white; border-radius: 16px; max-width: 360px; width: 100%;
@@ -238,7 +269,7 @@
       <button class="btn-camera" onclick="document.getElementById('cameraFileInput').click()" title="계기판 사진 촬영 OCR 검색">
         📷
       </button>
-      <input type="file" id="cameraFileInput" accept="image/*" capture="environment" style="display: none;" onchange="handleCameraOcr(this.files[0])">
+      <input type="file" id="cameraFileInput" accept="image/*" capture="environment" style="display: none;" onchange="onPhotoSelected(this.files[0])">
     </div>
 
     <!-- 바로가기 칩 -->
@@ -257,12 +288,26 @@
     </div>
   </div>
 
+  <!-- 📷 사진 영역 지정 크롭 모달 -->
+  <div class="crop-modal" id="cropModal">
+    <div class="crop-header">
+      ✂️ 사각형 박스를 조절하여 <b>[ 오류 코드: Pxxxxxx ]</b> 글자만 맞춰주세요
+    </div>
+    <div class="crop-body">
+      <img id="cropImagePreview" src="" alt="크롭 대상 이미지">
+    </div>
+    <div class="crop-footer">
+      <button class="btn-crop-action btn-crop-cancel" onclick="closeCropModal()">취소</button>
+      <button class="btn-crop-action btn-crop-confirm" onclick="processCroppedOcr()">🔍 선택 영역 코드 인식</button>
+    </div>
+  </div>
+
   <!-- OCR 진행 팝업 -->
   <div class="ocr-modal" id="ocrModal">
     <div class="ocr-modal-content">
       <div class="ocr-spinner"></div>
-      <h3 id="ocrStatusTitle" style="font-size: 16px; font-weight: 800; margin-bottom: 6px;">계기판 사진 전처리 및 분석 중...</h3>
-      <p id="ocrStatusSub" style="font-size: 13px; color: #64748b;">LCD 화면 고대비 보정 및 DTC 추출 중입니다.</p>
+      <h3 id="ocrStatusTitle" style="font-size: 16px; font-weight: 800; margin-bottom: 6px;">선택 영역 AI 판독 중...</h3>
+      <p id="ocrStatusSub" style="font-size: 13px; color: #64748b;">고대비 흑백 반전 및 볼보 DB 교정 중입니다.</p>
     </div>
   </div>
 
@@ -271,6 +316,7 @@
     let dtcData = [];
     let currentMode = localStorage.getItem('volvo_viewer_mode') || 'oem';
     let deferredPrompt = null;
+    let cropperInstance = null;
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -306,34 +352,64 @@
     }
 
     // ==========================================
-    // 📷 계기판 전용 고정밀 이미지 전처리 + OCR 파서
+    // 📷 1단계: 사진 촬영 즉시 크롭 창 열기
     // ==========================================
-    async function handleCameraOcr(file) {
+    function onPhotoSelected(file) {
       if (!file) return;
+
+      const cropModal = document.getElementById('cropModal');
+      const previewImg = document.getElementById('cropImagePreview');
+      previewImg.src = URL.createObjectURL(file);
+      cropModal.style.display = 'flex';
+
+      if (cropperInstance) cropperInstance.destroy();
+
+      cropperInstance = new Cropper(previewImg, {
+        viewMode: 1,
+        autoCropArea: 0.5,
+        responsive: true,
+        background: false,
+        zoomable: true
+      });
+    }
+
+    function closeCropModal() {
+      document.getElementById('cropModal').style.display = 'none';
+      if (cropperInstance) {
+        cropperInstance.destroy();
+        cropperInstance = null;
+      }
+      document.getElementById('cameraFileInput').value = '';
+    }
+
+    // ==========================================
+    // 📷 2단계: 잘라낸 영역 고대비 반전 + OCR 판독 + DB 자동 교정
+    // ==========================================
+    async function processCroppedOcr() {
+      if (!cropperInstance) return;
+
+      const croppedCanvas = cropperInstance.getCroppedCanvas({
+        minWidth: 400,
+        maxWidth: 1200,
+        imageSmoothingQuality: 'high'
+      });
+
+      closeCropModal();
 
       const modal = document.getElementById('ocrModal');
       const titleEl = document.getElementById('ocrStatusTitle');
       const subEl = document.getElementById('ocrStatusSub');
       modal.style.display = 'flex';
-      titleEl.innerText = '계기판 고대비 반전 처리 중...';
-      subEl.innerText = '어두운 LCD 배경을 흰색으로 자동 보정합니다.';
+      titleEl.innerText = 'LCD 흑백 고대비 반전 처리 중...';
+      subEl.innerText = '계기판 빛 반사를 제거하고 텍스트를 선명화합니다.';
 
       try {
-        // 1단계: 브라우저 내부 Canvas를 통한 고대비 흑백 반전 전처리
-        const preprocessedBlob = await preprocessLcdImage(file);
+        // LCD 흑백 반전 & 선명화
+        const preprocessedBlob = await binarizeLcdCanvas(croppedCanvas);
 
-        titleEl.innerText = 'AI 엔진 텍스트 판독 중...';
+        titleEl.innerText = '고장 코드 인공지능 분석 중...';
 
-        const worker = await Tesseract.createWorker('eng', 1, {
-          logger: m => {
-            if (m.status === 'recognizing text') {
-              const pct = Math.round((m.progress || 0) * 100);
-              titleEl.innerText = `고장 코드 판독 중... (${pct}%)`;
-            }
-          }
-        });
-
-        // 알파벳 대문자, 숫자 위주 인식
+        const worker = await Tesseract.createWorker('eng', 1);
         await worker.setParameters({
           tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz: '
         });
@@ -342,112 +418,126 @@
         await worker.terminate();
 
         const rawText = ret.data.text.toUpperCase();
-        console.log("OCR 판독 원본 결과:\n", rawText);
+        console.log("크롭 영역 OCR 판독 결과:\n", rawText);
 
-        // 2단계: 볼보 DTC 코드 정밀 탐색 및 디지털 폰트 보정 필터
-        let detectedDtc = extractAndCorrectDtc(rawText);
+        // 3단계: 볼보 DTC 추출 & 구글 시트 DB 유사도 자동 매칭 (Fuzzy Matching)
+        const finalDtc = resolveBestDtcCode(rawText);
 
-        if (detectedDtc) {
-          document.getElementById('searchInput').value = detectedDtc;
+        if (finalDtc) {
+          document.getElementById('searchInput').value = finalDtc;
           document.getElementById('clearBtn').style.display = 'block';
-          filterResults(detectedDtc.toLowerCase());
-          alert(`✅ 계기판 고장 코드 [${detectedDtc}] 자동 인식 성공!`);
+          filterResults(finalDtc.toLowerCase());
+          alert(`✅ 계기판 고장 코드 [${finalDtc}] 인식 및 매칭 완료!`);
         } else {
-          alert("⚠️ 사진에서 고장 코드를 인식하지 못했습니다.\n계기판의 '오류 코드: Pxxxxxx' 부분이 선명하게 나오도록 가까이서 다시 촬영해 주세요.");
+          alert("⚠️ 선택한 영역에서 고장 코드를 찾지 못했습니다.\n'오류 코드: Pxxxxxx' 글자가 박스 안에 꽉 차도록 영역을 다시 맞춰주세요.");
         }
       } catch (err) {
         console.error(err);
-        alert("❌ OCR 처리 중 오류가 발생했습니다: " + err.message);
+        alert("❌ 처리 중 오류 발생: " + err.message);
       } finally {
         modal.style.display = 'none';
-        document.getElementById('cameraFileInput').value = '';
       }
     }
 
-    // Canvas 기반 계기판 LCD 흑백 반전 & 고대비 필터
-    function preprocessLcdImage(file) {
+    // Canvas 흑백 반전 필터
+    function binarizeLcdCanvas(canvas) {
       return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => {
-          const maxDim = 1400;
-          let w = img.width;
-          let h = img.height;
-          if (w > maxDim || h > maxDim) {
-            if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
-            else { w = Math.round((w * maxDim) / h); h = maxDim; }
-          }
+        const ctx = canvas.getContext('2d');
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const d = imgData.data;
 
-          const canvas = document.createElement('canvas');
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, w, h);
+        for (let i = 0; i < d.length; i += 4) {
+          const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+          // 어두운 배경(gray < 110)은 흰색(255)으로, 밝은 텍스트(gray >= 110)는 검은색(0)으로 반전
+          const val = gray > 100 ? 0 : 255;
+          d[i] = val; d[i+1] = val; d[i+2] = val;
+        }
 
-          const imgData = ctx.getImageData(0, 0, w, h);
-          const d = imgData.data;
-
-          // 흑백 그레이스케일 + 색상 반전 + 고대비 이진화
-          for (let i = 0; i < d.length; i += 4) {
-            const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-            // 어두운 LCD 배경(gray < 110)은 흰색(255)으로, 밝은 텍스트(gray >= 110)는 검은색(0)으로 반전
-            const val = gray > 105 ? 0 : 255;
-            d[i] = val;
-            d[i + 1] = val;
-            d[i + 2] = val;
-          }
-
-          ctx.putImageData(imgData, 0, 0);
-          canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.95);
-        };
-        img.src = URL.createObjectURL(file);
+        ctx.putImageData(imgData, 0, 0);
+        canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.95);
       });
     }
 
-    // 볼보 DTC 패턴 매칭 및 LCD 폰트 오인식 보정 알고리즘
-    function extractAndCorrectDtc(text) {
-      // 1. 정상 표준 DTC 패턴 직접 검사 (예: P204713, P245700, U300001 등)
-      const directMatch = text.match(/([PUB C][0-9A-Z]{5,7})/);
+    // ==========================================
+    // 🧠 3단계: 구글 시트 DB 연동 오타 자동 교정 알고리즘
+    // ==========================================
+    function resolveBestDtcCode(ocrText) {
+      // 1. 순수 텍스트에서 DTC 정규식 직접 추출 시도
+      const clean = ocrText.replace(/[\s:\-_]+/g, '');
+      const directMatch = clean.match(/([PUB C][0-9A-Z]{5,7})/);
+      
+      let candidate = '';
       if (directMatch) {
-        let code = directMatch[1].replace(/\s+/g, '');
-        // P/U/B/C 뒤의 6자리가 숫자로 교정 가능한지 점검
-        return fixCommonOcrDigits(code);
-      }
-
-      // 2. 단어 단위로 쪼개어 LCD 폰트 왜곡 복원 검사
-      const words = text.split(/[\s:\n]+/);
-      for (let word of words) {
-        // 예: BREOTGT, P2047I3, P2O4713 등 6~8자리 단어 분석
-        if (word.length >= 6 && word.length <= 8) {
-          let fixed = word
-            .replace(/^BR/, 'P')
-            .replace(/^B(?=[0-9])/, 'P')
-            .replace(/^R(?=[0-9])/, 'P');
-          
-          if (fixed.startsWith('P') || fixed.startsWith('U') || fixed.startsWith('B') || fixed.startsWith('C')) {
-            const corrected = fixCommonOcrDigits(fixed);
-            if (/^[PUBC][0-9A-Z]{6}$/.test(corrected)) {
-              return corrected;
-            }
+        candidate = directMatch[1];
+      } else {
+        // 단어 단위 탐색
+        const words = ocrText.split(/[\s:\n]+/);
+        for (let w of words) {
+          if (w.length >= 6 && w.length <= 8) {
+            candidate = w;
+            break;
           }
         }
       }
 
-      return null;
+      if (!candidate) return null;
+
+      // 2. 구글 시트에 등록된 정품 DTC 코드들과 유사도(Levenshtein Distance) 비교
+      const dbCodes = [...new Set(dtcData.map(d => (d.dtc || '').toUpperCase()))].filter(Boolean);
+      
+      // 만약 DB에 정확히 일치하는 코드가 있으면 즉시 반환
+      if (dbCodes.includes(candidate)) {
+        return candidate;
+      }
+
+      // 오타 보정: 가장 유사한 DB 코드 찾기
+      let bestMatch = null;
+      let highestSimilarity = 0;
+
+      for (let dbCode of dbCodes) {
+        const sim = calculateSimilarity(candidate, dbCode);
+        if (sim > highestSimilarity) {
+          highestSimilarity = sim;
+          bestMatch = dbCode;
+        }
+      }
+
+      // 유사도가 60% 이상이면 구글 시트의 정확한 정품 코드로 자동 교정
+      if (bestMatch && highestSimilarity >= 0.6) {
+        console.log(`[AI 자동 교정] OCR 인식 '${candidate}' ➔ 시트 정품 코드 '${bestMatch}' (유사도: ${Math.round(highestSimilarity*100)}%)`);
+        return bestMatch;
+      }
+
+      return candidate;
     }
 
-    // LCD 디지털 폰트 숫자 오인식 교정 (O->0, I/l->1, Z->2, S->5, G->7, B->8)
-    function fixCommonOcrDigits(str) {
-      const prefix = str[0];
-      let body = str.slice(1);
-      body = body
-        .replace(/O/g, '0')
-        .replace(/I|L|T/g, (m, offset) => (offset === body.length - 1 && m === 'T' ? '3' : '1')) // 13->T 보정
-        .replace(/Z/g, '2')
-        .replace(/E/g, '2')
-        .replace(/S/g, '5')
-        .replace(/G/g, '7')
-        .replace(/B/g, '8');
-      return prefix + body;
+    // 레벤슈타인 거리 기반 유사도 측정 함수 (0.0 ~ 1.0)
+    function calculateSimilarity(s1, s2) {
+      let longer = s1, shorter = s2;
+      if (s1.length < s2.length) { longer = s2; shorter = s1; }
+      const longerLength = longer.length;
+      if (longerLength === 0) return 1.0;
+
+      const costs = [];
+      for (let i = 0; i <= longer.length; i++) {
+        let lastValue = i;
+        for (let j = 0; j <= shorter.length; j++) {
+          if (i === 0) costs[j] = j;
+          else {
+            if (j > 0) {
+              let newValue = costs[j - 1];
+              if (longer.charAt(i - 1) !== shorter.charAt(j - 1)) {
+                newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+              }
+              costs[j - 1] = lastValue;
+              lastValue = newValue;
+            }
+          }
+        }
+        if (i > 0) costs[shorter.length] = lastValue;
+      }
+
+      return (longerLength - costs[shorter.length]) / parseFloat(longerLength);
     }
 
     window.onload = () => {
