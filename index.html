@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>볼보에러 - Volvo 진단 뷰어</title>
+
+  <!-- PWA & 홈 화면 설정 -->
+  <meta name="apple-mobile-web-app-title" content="볼보에러">
+  <meta name="application-name" content="볼보에러">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0f172a">
+
+  <!-- 볼보에러 전용 앱 아이콘 (512x512 SVG Data URI) -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%230f172a'/%3E%3Cstop offset='100%25' stop-color='%231e293b'/%3E%3C/linearGradient%3E%3ClinearGradient id='accent' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2338bdf8'/%3E%3Cstop offset='100%25' stop-color='%230284c7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='115' fill='url(%23bg)'/%3E%3Crect x='18' y='18' width='476' height='476' rx='98' fill='none' stroke='url(%23accent)' stroke-width='14' opacity='0.85'/%3E%3Ctext x='256' y='135' font-family='Arial, sans-serif' font-size='42' font-weight='900' letter-spacing='8' fill='%23ffffff' text-anchor='middle'%3EVOLVO%3C/text%3E%3Cpath d='M256 160 L405 340 H107 Z' fill='%23f59e0b' opacity='0.15'/%3E%3Cpath d='M256 160 L405 340 H107 Z' fill='none' stroke='%23f59e0b' stroke-width='22' stroke-linejoin='round'/%3E%3Crect x='243' y='210' width='26' height='70' rx='13' fill='%23fbbf24'/%3E%3Ccircle cx='256' cy='310' r='14' fill='%23fbbf24'/%3E%3Crect x='70' y='385' width='372' height='80' rx='22' fill='%23dc2626'/%3E%3Ctext x='256' y='441' font-family='sans-serif' font-size='42' font-weight='900' letter-spacing='2' fill='%23ffffff' text-anchor='middle'%3E볼보에러%3C/text%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%230f172a'/%3E%3Cstop offset='100%25' stop-color='%231e293b'/%3E%3C/linearGradient%3E%3ClinearGradient id='accent' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2338bdf8'/%3E%3Cstop offset='100%25' stop-color='%230284c7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='115' fill='url(%23bg)'/%3E%3Crect x='18' y='18' width='476' height='476' rx='98' fill='none' stroke='url(%23accent)' stroke-width='14' opacity='0.85'/%3E%3Ctext x='256' y='135' font-family='Arial, sans-serif' font-size='42' font-weight='900' letter-spacing='8' fill='%23ffffff' text-anchor='middle'%3EVOLVO%3C/text%3E%3Cpath d='M256 160 L405 340 H107 Z' fill='%23f59e0b' opacity='0.15'/%3E%3Cpath d='M256 160 L405 340 H107 Z' fill='none' stroke='%23f59e0b' stroke-width='22' stroke-linejoin='round'/%3E%3Crect x='243' y='210' width='26' height='70' rx='13' fill='%23fbbf24'/%3E%3Ccircle cx='256' cy='310' r='14' fill='%23fbbf24'/%3E%3Crect x='70' y='385' width='372' height='80' rx='22' fill='%23dc2626'/%3E%3Ctext x='256' y='441' font-family='sans-serif' font-size='42' font-weight='900' letter-spacing='2' fill='%23ffffff' text-anchor='middle'%3E볼보에러%3C/text%3E%3C/svg%3E">
+
+  <!-- PWA Web App Manifest -->
+  <link rel="manifest" href="data:application/manifest+json;utf-8,%7B%22name%22%3A%22%EB%B3%BC%EB%B3%B4%EC%97%90%EB%9F%AC%20-%20Volvo%20%EC%A7%84%EB%8B%A8%20%EB%B7%B0%EC%96%B4%22%2C%22short_name%22%3A%22%EB%B3%BC%EB%B3%B4%EC%97%90%EB%9F%AC%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230f172a%22%2C%22theme_color%22%3A%22%230f172a%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%2C%253Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20512%20512'%253E%253Cdefs%253E%253ClinearGradient%20id%3D'bg'%20x1%3D'0%2525'%20y1%3D'0%2525'%20x2%3D'100%2525'%20y2%3D'100%2525'%253E%253Cstop%20offset%3D'0%2525'%20stop-color%3D'%25230f172a'%2F%253E%253Cstop%20offset%3D'100%2525'%20stop-color%3D'%25231e293b'%2F%253E%253C%2FlinearGradient%253E%253ClinearGradient%20id%3D'accent'%20x1%3D'0%2525'%20y1%3D'0%2525'%20x2%3D'100%2525'%20y2%3D'100%2525'%253E%253Cstop%20offset%3D'0%2525'%20stop-color%3D'%252338bdf8'%2F%253E%253Cstop%20offset%3D'100%2525'%20stop-color%3D'%25230284c7'%2F%253E%253C%2FlinearGradient%253E%253C%2Fdefs%253E%253Crect%20width%3D'512'%20height%3D'512'%20rx%3D'115'%20fill%3D'url(%2523bg)'%2F%253E%253Crect%20x%3D'18'%20y%3D'18'%20width%3D'476'%20height%3D'476'%20rx%3D'98'%20fill%3D'none'%20stroke%3D'url(%2523accent)'%20stroke-width%3D'14'%20opacity%3D'0.85'%2F%253E%253Ctext%20x%3D'256'%20y%3D'135'%20font-family%3D'Arial%2C%20sans-serif'%20font-size%3D'42'%20font-weight%3D'900'%20letter-spacing%3D'8'%20fill%3D'%2523ffffff'%20text-anchor%3D'middle'%253EVOLVO%253C%2Ftext%253E%253Cpath%20d%3D'M256%20160%20L405%20340%20H107%20Z'%20fill%3D'%2523f59e0b'%20opacity%3D'0.15'%2F%253E%253Cpath%20d%3D'M256%20160%20L405%20340%20H107%20Z'%20fill%3D'none'%20stroke%3D'%2523f59e0b'%20stroke-width%3D'22'%20stroke-linejoin%3D'round'%2F%253E%253Crect%20x%3D'243'%20y%3D'210'%20width%3D'26'%20height%3D'70'%20rx%3D'13'%20fill%3D'%2523fbbf24'%2F%253E%253Ccircle%20cx%3D'256'%20cy%3D'310'%20r%3D'14'%20fill%3D'%2523fbbf24'%2F%253E%253Crect%20x%3D'70'%20y%3D'385'%20width%3D'372'%20height%3D'80'%20rx%3D'22'%20fill%3D'%2523dc2626'%2F%253E%253Ctext%20x%3D'256'%20y%3D'441'%20font-family%3D'sans-serif'%20font-size%3D'42'%20font-weight%3D'900'%20letter-spacing%3D'2'%20fill%3D'%2523ffffff'%20text-anchor%3D'middle'%253E%EB%B3%BC%EB%B3%B4%EC%97%90%EB%9F%AC%253C%2Ftext%253E%253C%2Fsvg%253E%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', '맑은 고딕', sans-serif; }
+    
+    :root {
+      --app-bg: #e2e8f0;
+      --app-header-bg: #0f172a;
+      --app-header-text: #ffffff;
+      --search-bg: #ffffff;
+      --search-border: #94a3b8;
+      --search-text: #000000;
+      --chip-bg: #cbd5e1;
+      --chip-text: #0f172a;
+      --status-text: #475569;
+    }
+
+    body.theme-dark {
+      --app-bg: #0b0f19;
+      --app-header-bg: #111827;
+      --app-header-text: #f3f4f6;
+      --search-bg: #1f2937;
+      --search-border: #374151;
+      --search-text: #38bdf8;
+      --chip-bg: #1f2937;
+      --chip-text: #94a3b8;
+      --status-text: #64748b;
+    }
+
+    body { background: var(--app-bg); color: #000; padding-bottom: 60px; transition: background 0.25s ease; }
+
+    .app-header {
+      position: sticky; top: 0; z-index: 1000;
+      background: var(--app-header-bg); color: var(--app-header-text);
+      padding: 10px 14px; display: flex; align-items: center; justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .brand-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 900; }
+    .header-btns { display: flex; align-items: center; gap: 6px; }
+    
+    .btn-install {
+      background: #dc2626; border: none; color: white;
+      padding: 7px 13px; border-radius: 8px; font-size: 12px; cursor: pointer; font-weight: 900;
+      display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 8px rgba(220,38,38,0.35);
+      animation: pulseBtn 2s infinite;
+    }
+    @keyframes pulseBtn {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.04); }
+    }
+
+    .btn-refresh {
+      background: rgba(255,255,255,0.15); border: none; color: white;
+      padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 700;
+    }
+
+    .container { padding: 14px; max-width: 840px; margin: 0 auto; }
+
+    /* 3단 모드 스위처 */
+    .mode-switcher {
+      display: flex; background: rgba(0,0,0,0.15); padding: 4px; border-radius: 12px;
+      margin-bottom: 12px; gap: 4px;
+    }
+    body.theme-dark .mode-switcher { background: #1e293b; }
+    
+    .mode-btn {
+      flex: 1; padding: 9px 4px; border: none; border-radius: 9px;
+      font-size: 12.5px; font-weight: 800; cursor: pointer; background: transparent;
+      color: #64748b; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 4px;
+    }
+    .mode-btn.active {
+      background: #ffffff; color: #0f172a; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    body.theme-dark .mode-btn.active {
+      background: #38bdf8; color: #0f172a; box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+    }
+
+    /* 검색창 & 드롭다운 */
+    .search-wrapper { position: relative; margin-bottom: 10px; }
+    .search-input {
+      width: 100%; padding: 14px 44px 14px 16px; font-size: 16px; font-weight: 800;
+      border: 2px solid var(--search-border); border-radius: 10px; background: var(--search-bg); color: var(--search-text);
+      outline: none; box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    }
+    .search-input:focus { border-color: #0284c7; }
+    .clear-btn {
+      position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+      background: #94a3b8; border: none; width: 24px; height: 24px;
+      border-radius: 50%; color: white; font-weight: bold; cursor: pointer; display: none;
+    }
+    .autocomplete-dropdown {
+      position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+      background: white; border: 1px solid #cbd5e1; border-radius: 10px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.15); max-height: 250px; overflow-y: auto; z-index: 999; display: none;
+    }
+    .autocomplete-item { padding: 12px 16px; border-bottom: 1px solid #f1f5f9; cursor: pointer; font-weight: 700; color: #dc2626; }
+    .autocomplete-item:hover { background: #f0f9ff; }
+
+    /* 바로가기 칩 */
+    .chips-container { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 10px; scrollbar-width: none; }
+    .chips-container::-webkit-scrollbar { display: none; }
+    .chip { background: var(--chip-bg); color: var(--chip-text); padding: 6px 13px; border-radius: 16px; font-size: 12.5px; font-weight: 800; white-space: nowrap; cursor: pointer; }
+
+    .status-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; font-size: 12px; color: var(--status-text); font-weight: 700; }
+    .empty-state { text-align: center; padding: 60px 20px; color: #64748b; font-weight: 700; font-size: 14.5px; line-height: 1.6; }
+
+    /* [모드 1] 정통 매뉴얼 */
+    .mode-oem-sheet { background: #ffffff; padding: 30px 25px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); border: 1px solid #94a3b8; color: #000; }
+    .oem-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px; }
+    .oem-logo { font-size: 22px; font-weight: 900; letter-spacing: 7px; color: #000; font-family: serif; }
+    .oem-doc-title { font-size: 16px; font-weight: 800; color: #000; }
+    .oem-tbl { width: 100%; border-collapse: collapse; border: 1.5px solid #000000; margin-bottom: 14px; font-size: 12.5px; color: #000; }
+    .oem-tbl th, .oem-tbl td { border: 1px solid #000000; padding: 6px 9px; vertical-align: top; }
+    .oem-tbl th { background: #d9d9d9; font-weight: 800; text-align: left; }
+    .oem-dtc-big { font-size: 22px; font-weight: 900; margin: 15px 0 20px 0; color: #000; }
+    .oem-bullet-row { display: flex; align-items: flex-start; gap: 6px; margin-bottom: 4px; line-height: 1.45; }
+    .oem-link { color: #0044cc; text-decoration: underline; cursor: pointer; font-weight: 700; }
+    .oem-stamp { text-align: right; margin-top: 18px; }
+    .oem-stamp-box { display: inline-block; border: 1px solid #999; color: #777; padding: 3px 8px; border-radius: 4px; font-size: 11px; }
+
+    /* [모드 2] 모던 카드 */
+    .mode-card-wrap { display: flex; flex-direction: column; gap: 12px; }
+    .m-card { background: #ffffff; border-radius: 12px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
+    .m-hero { border-left: 5px solid #0284c7; }
+    .m-badge-group { display: flex; gap: 6px; margin-bottom: 8px; }
+    .m-badge { padding: 3px 8px; border-radius: 5px; font-size: 11px; font-weight: 800; }
+    .m-badge-red { background: #fee2e2; color: #dc2626; }
+    .m-badge-blue { background: #e0f2fe; color: #0284c7; }
+    .m-hero-dtc { font-size: 24px; font-weight: 900; color: #0f172a; margin-bottom: 4px; }
+    .m-hero-desc { font-size: 13.5px; font-weight: 700; color: #334155; line-height: 1.4; }
+    .m-warn-card { background: #fffbeb; border: 1.5px solid #fde68a; }
+    .m-card-title { font-size: 13px; font-weight: 800; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+    .m-step-list { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+    .m-step-item { display: flex; gap: 10px; align-items: flex-start; }
+    .m-step-num { width: 22px; height: 22px; border-radius: 50%; background: #0284c7; color: white; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; flex-shrink: 0; margin-top: 2px; }
+    .m-step-txt { font-size: 13px; font-weight: 700; color: #1e293b; line-height: 1.45; }
+    .m-pills-wrap { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+    .m-dtc-pill { background: #e0f2fe; color: #0284c7; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 800; text-decoration: none; cursor: pointer; border: 1px solid #bae6fd; }
+
+    /* [모드 3] 현장 다크 */
+    .mode-dark-wrap { display: flex; flex-direction: column; gap: 12px; color: #f3f4f6; }
+    .d-card { background: #1e293b; border-radius: 12px; padding: 18px; border: 1px solid #334155; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+    .d-hero { border: 1.5px solid #ef4444; background: linear-gradient(180deg, #1e293b 0%, #172033 100%); }
+    .d-tag { font-size: 10.5px; font-weight: 900; color: #ef4444; letter-spacing: 1px; margin-bottom: 4px; }
+    .d-dtc-code { font-size: 26px; font-weight: 900; color: #ffffff; text-shadow: 0 0 10px rgba(255,255,255,0.2); }
+    .d-ecu-name { color: #38bdf8; font-size: 12px; font-weight: 800; margin-bottom: 6px; }
+    .d-comp-desc { color: #cbd5e1; font-size: 13.5px; font-weight: 700; line-height: 1.4; }
+    .d-title { font-size: 13.5px; font-weight: 800; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+    .d-title-cyan { color: #38bdf8; }
+    .d-title-yellow { color: #fbbf24; }
+    .d-title-green { color: #34d399; }
+    .d-check-item { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 10px; }
+    .d-check-item:last-child { margin-bottom: 0; }
+    .d-check-box { width: 20px; height: 20px; border-radius: 4px; background: #065f46; color: #34d399; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; flex-shrink: 0; margin-top: 1px; }
+    .d-check-text { font-size: 13px; font-weight: 700; color: #f3f4f6; line-height: 1.45; }
+    .d-neon-pill { background: #1d4ed8; color: #ffffff; padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; box-shadow: 0 0 8px rgba(29, 78, 216, 0.5); }
+
+    /* iOS / 미지원 브라우저용 안내 모달 */
+    .install-modal {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.75); display: none; align-items: center; justify-content: center;
+      z-index: 9999; padding: 20px;
+    }
+    .install-modal-content {
+      background: white; border-radius: 20px; max-width: 400px; width: 100%;
+      padding: 24px 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.4); color: #1e293b;
+      text-align: center;
+    }
+    .install-modal-content h3 { font-size: 18px; font-weight: 900; margin-bottom: 12px; }
+    .install-guide-box {
+      background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 12px; padding: 16px;
+      text-align: left; font-size: 13.5px; line-height: 1.65; margin-bottom: 18px; color: #334155;
+    }
+    .btn-close-modal {
+      width: 100%; padding: 13px; background: #0f172a; color: white;
+      border: none; border-radius: 10px; font-size: 14.5px; font-weight: 800; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 상단 앱 바 -->
+  <div class="app-header">
+    <div class="brand-title">
+      <span>🚜</span>
+      <span>볼보에러</span>
+    </div>
+    <div class="header-btns">
+      <button id="btnInstallApp" class="btn-install" onclick="triggerInstallPrompt()">📲 바로가기 추가</button>
+      <button class="btn-refresh" onclick="fetchData()">새로고침</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <!-- 모드 선택 스위처 -->
+    <div class="mode-switcher">
+      <button class="mode-btn active" id="btnModeOem" onclick="setViewerMode('oem')">📄 정통 매뉴얼</button>
+      <button class="mode-btn" id="btnModeCard" onclick="setViewerMode('card')">🗂️ 모던 카드</button>
+      <button class="mode-btn" id="btnModeDark" onclick="setViewerMode('dark')">⚡ 현장 다크</button>
+    </div>
+
+    <!-- 검색창 -->
+    <div class="search-wrapper">
+      <input type="text" id="searchInput" class="search-input" placeholder="조회할 DTC 에러코드(예: P255601, P245700) 입력..." autocomplete="off" oninput="onSearchInput()" onfocus="onSearchInput()">
+      <button id="clearBtn" class="clear-btn" onclick="clearSearch()">×</button>
+      <div id="autocompleteList" class="autocomplete-dropdown"></div>
+    </div>
+
+    <!-- 바로가기 칩 -->
+    <div class="chips-container" id="quickChips"></div>
+
+    <div class="status-bar">
+      <span id="dataCount">DB 연결 중...</span>
+      <span id="currentModeLabel">모드: 정통 매뉴얼</span>
+    </div>
+
+    <!-- 결과 리스트 -->
+    <div id="resultsList">
+      <div class="empty-state">
+        🔍 조회할 <b>DTC 고장 코드</b>를 검색창에 입력하거나<br>위의 바로가기 버튼을 선택해 주세요.
+      </div>
+    </div>
+  </div>
+
+  <!-- 홈 화면 추가 안내 모달 -->
+  <div class="install-modal" id="installModal">
+    <div class="install-modal-content">
+      <div style="font-size:38px; margin-bottom:8px;">📲</div>
+      <h3>바탕화면에 '볼보에러' 추가</h3>
+      <div class="install-guide-box" id="installGuideText"></div>
+      <button class="btn-close-modal" onclick="closeInstallModal()">확인 완료</button>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbzV5H2kowUqmGNO2UloeU_2OMYT0ZbyyzsS3iN4LXLhY_WvZ1maxiIOZ9jvvCg99aM/exec";
+    let dtcData = [];
+    let currentMode = localStorage.getItem('volvo_viewer_mode') || 'oem';
+    let deferredPrompt = null;
+
+    // 1. Service Worker 자동 등록 (안드로이드 PWA 조건 만족)
+    if ('serviceWorker' in navigator) {
+      const swCode = "self.addEventListener('install', e => self.skipWaiting()); self.addEventListener('activate', e => clients.claim());";
+      const blob = new Blob([swCode], { type: 'application/javascript' });
+      navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(() => {});
+    }
+
+    // 2. 안드로이드 크롬/삼성브라우저 시스템 팝업 캡처
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+    });
+
+    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
+      document.getElementById('btnInstallApp').style.display = 'none';
+    }
+
+    // 3. 버튼 클릭 시 자동 설치 트리거
+    function triggerInstallPrompt() {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then((choiceResult) => {
+          if (choiceResult.outcome === 'accepted') {
+            document.getElementById('btnInstallApp').style.display = 'none';
+          }
+          deferredPrompt = null;
+        });
+      } else {
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        const guideBox = document.getElementById('installGuideText');
+
+        if (isIOS) {
+          guideBox.innerHTML = `
+            <b>아이폰 (Safari) 추가 방법:</b><br><br>
+            1. 화면 하단 중앙의 <b>[공유 아이콘 ( ⎋ )]</b> 터치<br>
+            2. 메뉴에서 <b>[홈 화면에 추가]</b> 선택<br>
+            3. 우측 상단 <b>[추가]</b> 터치 시 완료!
+          `;
+        } else {
+          guideBox.innerHTML = `
+            <b>안드로이드 (크롬 / 삼성인터넷):</b><br><br>
+            1. 브라우저 우측 상단 <b>[메뉴 ( ⋮ 또는 ⋯ )]</b> 터치<br>
+            2. <b>[홈 화면에 추가]</b> 또는 <b>[앱 설치]</b> 선택<br>
+            3. 바탕화면에 <b>'볼보에러'</b> 아이콘이 생성됩니다.
+          `;
+        }
+        document.getElementById('installModal').style.display = 'flex';
+      }
+    }
+
+    function closeInstallModal() {
+      document.getElementById('installModal').style.display = 'none';
+    }
+
+    window.onload = () => {
+      setViewerMode(currentMode, false);
+      fetchData();
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.search-wrapper')) closeAutocomplete();
+      });
+    };
+
+    function setViewerMode(mode, shouldRerender = true) {
+      currentMode = mode;
+      localStorage.setItem('volvo_viewer_mode', mode);
+
+      document.getElementById('btnModeOem').classList.toggle('active', mode === 'oem');
+      document.getElementById('btnModeCard').classList.toggle('active', mode === 'card');
+      document.getElementById('btnModeDark').classList.toggle('active', mode === 'dark');
+
+      document.body.classList.toggle('theme-dark', mode === 'dark');
+
+      const modeNames = { oem: '정통 매뉴얼', card: '모던 카드 대시보드', dark: '현장 특화 다크모드' };
+      document.getElementById('currentModeLabel').innerText = `모드: ${modeNames[mode]}`;
+
+      if (shouldRerender) {
+        const q = document.getElementById('searchInput').value.trim();
+        if (q) filterResults(q.toLowerCase());
+      }
+    }
+
+    async function fetchData() {
+      try {
+        const res = await fetch(API_URL, { method: 'GET', redirect: 'follow' });
+        const data = await res.json();
+        
+        if (Array.isArray(data)) {
+          dtcData = data;
+          document.getElementById('dataCount').innerText = `총 ${dtcData.length}건 등록됨`;
+          renderQuickChips();
+
+          const currQ = document.getElementById('searchInput').value.trim();
+          if (currQ) filterResults(currQ.toLowerCase());
+        }
+      } catch (err) {
+        document.getElementById('resultsList').innerHTML = `<div class="empty-state" style="color:#dc2626;"><b>데이터 로딩 실패</b><br><br>${err.message}</div>`;
+      }
+    }
+
+    function renderQuickChips() {
+      const chipBox = document.getElementById('quickChips');
+      const uniqueCodes = [...new Set(dtcData.map(d => d.dtc).filter(Boolean))];
+      chipBox.innerHTML = uniqueCodes.map(code => 
+        `<span class="chip" onclick="selectKeyword('${code}')">${code}</span>`
+      ).join('');
+    }
+
+    function onSearchInput() {
+      const q = document.getElementById('searchInput').value.trim().toLowerCase();
+      const clearBtn = document.getElementById('clearBtn');
+      const acList = document.getElementById('autocompleteList');
+
+      clearBtn.style.display = q ? 'block' : 'none';
+
+      if (!q) {
+        closeAutocomplete();
+        showInitialEmptyState();
+        document.getElementById('dataCount').innerText = `총 ${dtcData.length}건 등록됨`;
+        return;
+      }
+
+      const matches = dtcData.filter(item => {
+        const text = `${item.dtc || ''} ${item.compFull || ''} ${item.event || ''} ${item.modelType || ''}`.toLowerCase();
+        return text.includes(q);
+      }).slice(0, 6);
+
+      if (matches.length > 0) {
+        acList.innerHTML = matches.map(item => `
+          <div class="autocomplete-item" onclick="selectKeyword('${item.dtc}')">
+            ${item.dtc} <span style="font-size:12px; color:#64748b; font-weight:normal;">(${item.compFull || item.modelType || ''})</span>
+          </div>
+        `).join('');
+        acList.style.display = 'block';
+      } else {
+        closeAutocomplete();
+      }
+
+      filterResults(q);
+    }
+
+    function selectKeyword(keyword) {
+      document.getElementById('searchInput').value = keyword;
+      document.getElementById('clearBtn').style.display = 'block';
+      closeAutocomplete();
+      filterResults(keyword.toLowerCase());
+    }
+
+    function closeAutocomplete() {
+      document.getElementById('autocompleteList').style.display = 'none';
+    }
+
+    function filterResults(q) {
+      const filtered = dtcData.filter(item => {
+        return Object.values(item).some(val => String(val).toLowerCase().includes(q));
+      });
+      renderCards(filtered);
+      document.getElementById('dataCount').innerText = `검색 결과: ${filtered.length}건`;
+    }
+
+    function clearSearch() {
+      document.getElementById('searchInput').value = '';
+      document.getElementById('clearBtn').style.display = 'none';
+      closeAutocomplete();
+      showInitialEmptyState();
+      document.getElementById('dataCount').innerText = `총 ${dtcData.length}건 등록됨`;
+    }
+
+    function showInitialEmptyState() {
+      document.getElementById('resultsList').innerHTML = `
+        <div class="empty-state">
+          🔍 조회할 <b>DTC 고장 코드</b>를 검색창에 입력하거나<br>위의 바로가기 버튼을 선택해 주세요.
+        </div>
+      `;
+    }
+
+    const splitToList = (str) => {
+      if (!str || str === '없음') return [];
+      return str.split('|').map(s => s.trim()).filter(s => s);
+    };
+
+    function renderCards(items) {
+      const resultsList = document.getElementById('resultsList');
+      resultsList.innerHTML = '';
+
+      if (items.length === 0) {
+        resultsList.innerHTML = '<div class="empty-state">일치하는 진단서가 없습니다. 🔍</div>';
+        return;
+      }
+
+      items.forEach(d => {
+        const card = document.createElement('div');
+        if (currentMode === 'oem') {
+          card.innerHTML = renderOemStyle(d);
+        } else if (currentMode === 'card') {
+          card.innerHTML = renderCardStyle(d);
+        } else if (currentMode === 'dark') {
+          card.innerHTML = renderDarkStyle(d);
+        }
+        resultsList.appendChild(card);
+      });
+    }
+
+    function renderOemStyle(d) {
+      const renderBullets = (arr) => {
+        if (!arr || arr.length === 0) return `<div class="oem-bullet-row"><span>○</span><span>없음</span></div>`;
+        return arr.map(t => `<div class="oem-bullet-row"><span>○</span><span>${t}</span></div>`).join('');
+      };
+      const renderPreDtcs = (str) => {
+        const list = splitToList(str);
+        if (list.length === 0) return `<div class="oem-bullet-row"><span>○</span><span>없음</span></div>`;
+        return list.map(c => `<div class="oem-bullet-row"><span>○</span><span class="oem-link" onclick="selectKeyword('${c}')">☍ ${c}</span></div>`).join('');
+      };
+
+      return `
+        <div class="mode-oem-sheet">
+          <div class="oem-header">
+            <div class="oem-logo">VOLVO</div>
+            <div class="oem-doc-title">Volvo 유도 진단</div>
+          </div>
+          <table class="oem-tbl">
+            <tr>
+              <td style="width: 22%;"><b>일자:</b><br>2026-08-16</td>
+              <td style="width: 28%;"><b>정보 유형:</b><br>진단 오류 코드</td>
+              <td style="width: 50%;"><b>프로필:</b><br><b>${d.modelType || 'EW140E Volvo'}</b></td>
+            </tr>
+          </table>
+          <div class="oem-dtc-big">${d.dtc || ''}</div>
+          <table class="oem-tbl">
+            <tr><th colspan="4">일련 번호에 대해 유효</th></tr>
+            <tr style="background:#f2f2f2; font-weight:bold;">
+              <td style="width:35%;">모델 종류:</td>
+              <td style="width:25%;">생산 사업장</td>
+              <td style="width:20%;">일련 번호 시작</td>
+              <td style="width:20%;">일련 번호 종료</td>
+            </tr>
+            <tr>
+              <td>${d.modelType || '-'}</td>
+              <td>${d.factory || '-'}</td>
+              <td>${d.serialStart || '-'}</td>
+              <td>${d.serialEnd || '-'}</td>
+            </tr>
+          </table>
+          <table class="oem-tbl">
+            <tr><th colspan="2">ISO DTC 코드</th></tr>
+            <tr><td style="width: 35%;">컨트롤 유니트</td><td>${d.ecu || '엔진 컨트롤 모듈'}</td></tr>
+            <tr><td>DTC 코드, 시스템/구성부품, 고장 유형</td><td><b>${d.compFull || d.dtc}</b></td></tr>
+          </table>
+          <table class="oem-tbl">
+            <tr><td style="width: 20%; font-weight:bold;">기준</td><td><span class="oem-link">${d.standard || '개요'}</span></td></tr>
+          </table>
+          <div style="font-size:13.5px; font-weight:800; margin:14px 0 6px 0;">진단</div>
+          <table class="oem-tbl">
+            <tr><td style="width: 25%; font-weight:bold;">고장 이벤트</td><td>${d.event || '-'}</td></tr>
+            <tr><td style="font-weight:bold;">증상</td><td>${renderBullets(splitToList(d.symptom))}</td></tr>
+            <tr><td style="font-weight:bold;">조건:</td><td>${renderBullets(splitToList(d.condition))}</td></tr>
+            <tr><td style="font-weight:bold;">선행조치 DTC</td><td>${renderPreDtcs(d.preDtc)}</td></tr>
+            <tr><td style="font-weight:bold;">가능한 이유</td><td>${renderBullets(splitToList(d.causes))}</td></tr>
+            <tr><td style="font-weight:bold;">조치</td><td>${renderBullets(splitToList(d.actions))}</td></tr>
+          </table>
+          <div class="oem-stamp"><span class="oem-stamp-box">Guided Diagnostics</span></div>
+        </div>
+      `;
+    }
+
+    function renderCardStyle(d) {
+      const renderSteps = (arr) => {
+        if (!arr || arr.length === 0) return '<div style="font-size:13px; color:#64748b;">점검 내용 없음</div>';
+        return arr.map((t, idx) => `
+          <div class="m-step-item">
+            <div class="m-step-num">${idx + 1}</div>
+            <div class="m-step-txt">${t}</div>
+          </div>
+        `).join('');
+      };
+      const renderPrePills = (str) => {
+        const list = splitToList(str);
+        if (list.length === 0) return '<span style="font-size:12.5px; color:#64748b;">선행 고장 없음</span>';
+        return list.map(c => `<span class="m-dtc-pill" onclick="selectKeyword('${c}')">☍ ${c}</span>`).join('');
+      };
+
+      return `
+        <div class="mode-card-wrap">
+          <div class="m-card m-hero">
+            <div class="m-badge-group">
+              <span class="m-badge m-badge-red">고장코드</span>
+              <span class="m-badge m-badge-blue">${d.ecu || '제어기'}</span>
+              <span class="m-badge" style="background:#f1f5f9; color:#475569;">${d.modelType || 'Volvo'}</span>
+            </div>
+            <div class="m-hero-dtc">${d.dtc}</div>
+            <div class="m-hero-desc">${d.compFull || ''}</div>
+          </div>
+          <div class="m-card m-warn-card">
+            <div class="m-card-title" style="color:#b45309;">⚠️ 고장 이벤트 (감지 원인)</div>
+            <div style="font-size:13.5px; font-weight:800; color:#78350f; margin-bottom:4px;">${d.event || '-'}</div>
+            <div style="font-size:12px; color:#92400e;">기준 매뉴얼: ${d.standard || '기본 시스템'}</div>
+          </div>
+          <div class="m-card">
+            <div class="m-card-title" style="color:#0f172a;">🚨 증상 및 발생 조건</div>
+            <div style="font-size:13px; color:#dc2626; font-weight:700; margin-bottom:6px;">• 증상: ${d.symptom || '없음'}</div>
+            <div style="font-size:12.5px; color:#475569; font-weight:600;">• 조건: ${d.condition || '없음'}</div>
+          </div>
+          <div class="m-card">
+            <div class="m-card-title" style="color:#0f172a;">🔗 선행조치 우선 점검 DTC</div>
+            <div class="m-pills-wrap">${renderPrePills(d.preDtc)}</div>
+          </div>
+          <div class="m-card">
+            <div class="m-card-title" style="color:#0f172a;">🛠️ 원인 분석 & 정비 조치 가이드</div>
+            <div class="m-step-list">${renderSteps(splitToList(d.actions))}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderDarkStyle(d) {
+      const renderDarkChecks = (arr) => {
+        if (!arr || arr.length === 0) return '<div style="font-size:13px; color:#64748b;">수칙 없음</div>';
+        return arr.map(t => `
+          <div class="d-check-item">
+            <div class="d-check-box">✓</div>
+            <div class="d-check-text">${t}</div>
+          </div>
+        `).join('');
+      };
+      const renderDarkPills = (str) => {
+        const list = splitToList(str);
+        if (list.length === 0) return '<span style="font-size:12.5px; color:#64748b;">선행 없음</span>';
+        return list.map(c => `<span class="d-neon-pill" onclick="selectKeyword('${c}')">🔗 ${c}</span>`).join('');
+      };
+
+      return `
+        <div class="mode-dark-wrap">
+          <div class="d-card d-hero">
+            <div class="d-tag">CRITICAL FAULT CODE</div>
+            <div class="d-dtc-code">${d.dtc}</div>
+            <div class="d-ecu-name">${d.ecu || '제어기'} &nbsp;|&nbsp; ${d.modelType || 'Volvo'}</div>
+            <div class="d-comp-desc">${d.compFull || ''}</div>
+          </div>
+          <div class="d-card">
+            <div class="d-title d-title-cyan">⚡ 고장 신호 및 감지 조건</div>
+            <div style="font-size:13px; color:#f87171; font-weight:800; margin-bottom:6px;">• 신호: ${d.event || '-'}</div>
+            <div style="font-size:12.5px; color:#94a3b8;">• 조건: ${d.condition || '없음'}</div>
+            <div style="font-size:12px; color:#64748b; margin-top:4px;">• 기준: ${d.standard || '-'}</div>
+          </div>
+          <div class="d-card">
+            <div class="d-title d-title-yellow">🚨 선행 필수 조치 DTC</div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">${renderDarkPills(d.preDtc)}</div>
+          </div>
+          <div class="d-card" style="border: 1px solid #10b981;">
+            <div class="d-title d-title-green">🔧 현장 정비 행동 수칙 (Action Plan)</div>
+            <div style="margin-top:8px;">${renderDarkChecks(splitToList(d.actions))}</div>
+          </div>
+        </div>
+      `;
+    }
+  </script>
+</body>
+</html>
