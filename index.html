@@ -70,7 +70,7 @@
     .mode-btn.active { background: #ffffff; color: #0f172a; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
     body.theme-dark .mode-btn.active { background: #38bdf8; color: #0f172a; box-shadow: 0 0 12px rgba(56, 189, 248, 0.4); }
 
-    /* 검색창 & 토글 액션 바 */
+    /* 검색창 & 토글 액션 버튼 그룹 */
     .search-wrapper { position: relative; margin-bottom: 10px; }
     .search-input {
       width: 100%; padding: 14px 80px 14px 16px; font-size: 16px; font-weight: 800;
@@ -245,15 +245,13 @@
       <button class="mode-btn" id="btnModeDark" onclick="setViewerMode('dark')">⚡ 현장 다크</button>
     </div>
 
-    <!-- 검색창 & 토글 액션 버튼 그룹 -->
     <div class="search-wrapper">
-      <input type="text" id="searchInput" class="search-input" placeholder="조회할 DTC 에러코드(2글자 이상 입력)..." autocomplete="off" oninput="onSearchInput()" onclick="toggleDropdownOnInputClick()">
+      <input type="text" id="searchInput" class="search-input" placeholder="에러코드(예: 12, P2047, 187, PID91) 입력..." autocomplete="off" oninput="onSearchInput()" onclick="toggleDropdownOnInputClick()">
       <div class="search-actions">
         <button type="button" id="btnToggleDropdown" class="action-btn btn-toggle-dropdown" onclick="toggleDropdownManually(event)" title="목록 열기/닫기">▼</button>
         <button type="button" id="clearBtn" class="action-btn clear-btn" onclick="clearSearch(event)" title="검색어 지우기">×</button>
       </div>
       
-      <!-- 자동완성 드롭다운 -->
       <div id="autocompleteList" class="autocomplete-dropdown"></div>
     </div>
 
@@ -266,7 +264,7 @@
 
     <div id="resultsList">
       <div class="empty-state">
-        🔍 조회할 <b>DTC 고장 코드</b>를 검색창에 <b>2글자 이상</b> 입력하거나<br>위의 바로가기 버튼을 선택해 주세요.
+        🔍 조회할 <b>DTC / SAE 고장 코드</b>를 검색창에 <b>2글자 이상</b> 입력하거나<br>위의 바로가기 버튼을 선택해 주세요.
       </div>
     </div>
   </div>
@@ -330,7 +328,28 @@
     }
 
     // ========================================================
-    // 🔍 스마트 검색 및 원터치 토글 (열기/닫기) 엔진
+    // 🎯 에러코드(DTC / SAE) 전용 매칭 검사 함수 (본문 내용 완벽 제외)
+    // ========================================================
+    function isErrorCodeMatch(item, q) {
+      if (!q) return false;
+      const qRaw = q.toLowerCase().trim();
+      const qClean = qRaw.replace(/[\s\-_]/g, '');
+
+      // 1. DTC 코드 검사 (예: P204712, MID187 PID91)
+      const dtcRaw = String(item.dtc || '').toLowerCase().trim();
+      const dtcClean = dtcRaw.replace(/[\s\-_]/g, '');
+      if (dtcRaw.includes(qRaw) || dtcClean.includes(qClean)) return true;
+
+      // 2. SAE 디스플레이 코드 검사 (예: 187 PID91)
+      const dispRaw = String(item.displayMsg || '').toLowerCase().trim();
+      const dispClean = dispRaw.replace(/[\s\-_]/g, '');
+      if (dispRaw && (dispRaw.includes(qRaw) || dispClean.includes(qClean))) return true;
+
+      return false;
+    }
+
+    // ========================================================
+    // 🔍 스마트 검색 및 추천 목록 (에러코드 전용)
     // ========================================================
     function onSearchInput() {
       const q = document.getElementById('searchInput').value.trim().toLowerCase();
@@ -349,7 +368,7 @@
         } else {
           document.getElementById('resultsList').innerHTML = `
             <div class="empty-state">
-              💡 <b>2글자 이상</b> 입력해야 검색이 시작됩니다. (현재: "${q}")
+              💡 <b>에러코드 2글자 이상</b> 입력해야 검색이 시작됩니다. (현재: "${q}")
             </div>
           `;
           document.getElementById('dataCount').innerText = '2글자 이상 입력 대기 중';
@@ -362,20 +381,17 @@
       filterResults(q);
     }
 
-    // 추천 목록 생성 및 펼치기
+    // 추천 목록 생성 (에러코드만)
     function openAutocompleteList(q) {
       const acList = document.getElementById('autocompleteList');
       const toggleBtn = document.getElementById('btnToggleDropdown');
 
-      const matches = dtcData.filter(item => {
-        const text = `${item.dtc || ''} ${item.compFull || ''} ${item.event || ''} ${item.modelType || ''}`.toLowerCase();
-        return text.includes(q);
-      }).slice(0, 8);
+      const matches = dtcData.filter(item => isErrorCodeMatch(item, q)).slice(0, 8);
 
       if (matches.length > 0) {
         let acHtml = `
           <div class="ac-header">
-            <span>추천 검색어 (${matches.length}건)</span>
+            <span>추천 에러코드 (${matches.length}건)</span>
             <button type="button" class="btn-close-ac" onclick="closeAutocomplete()">목록 접기 ▴</button>
           </div>
         `;
@@ -393,7 +409,6 @@
       }
     }
 
-    // 토글 버튼 수동 클릭 시 동작 (열기 <-> 닫기)
     function toggleDropdownManually(e) {
       if (e) e.stopPropagation();
       const acList = document.getElementById('autocompleteList');
@@ -406,7 +421,6 @@
       }
     }
 
-    // 검색창 클릭 시 토글
     function toggleDropdownOnInputClick() {
       const acList = document.getElementById('autocompleteList');
       const q = document.getElementById('searchInput').value.trim().toLowerCase();
@@ -430,10 +444,9 @@
       filterResults(keyword.toLowerCase());
     }
 
+    // 결과 필터링 (에러코드 전용)
     function filterResults(q) {
-      currentFiltered = dtcData.filter(item => {
-        return Object.values(item).some(val => String(val).toLowerCase().includes(q));
-      });
+      currentFiltered = dtcData.filter(item => isErrorCodeMatch(item, q));
 
       renderCards(currentFiltered);
       document.getElementById('dataCount').innerText = `검색 결과: ${currentFiltered.length}건`;
@@ -453,7 +466,7 @@
     function showInitialEmptyState() {
       document.getElementById('resultsList').innerHTML = `
         <div class="empty-state">
-          🔍 조회할 <b>DTC 고장 코드</b>를 검색창에 <b>2글자 이상</b> 입력하거나<br>위의 바로가기 버튼을 선택해 주세요.
+          🔍 조회할 <b>DTC / SAE 고장 코드</b>를 검색창에 <b>2글자 이상</b> 입력하거나<br>위의 바로가기 버튼을 선택해 주세요.
         </div>
       `;
     }
@@ -482,7 +495,7 @@
       resultsList.innerHTML = '';
 
       if (items.length === 0) {
-        resultsList.innerHTML = '<div class="empty-state">일치하는 진단서가 없습니다. 🔍</div>';
+        resultsList.innerHTML = '<div class="empty-state">일치하는 에러코드 진단서가 없습니다. 🔍</div>';
         return;
       }
 
