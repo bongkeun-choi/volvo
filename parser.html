@@ -37,11 +37,19 @@
     .paste-desc { font-size: 13px; color: #64748b; line-height: 1.5; }
     .kbd-badge { background: #0f172a; color: white; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-weight: bold; }
 
+    /* 옵션 바 */
+    .option-box {
+      background: #f1f5f9; padding: 12px 16px; border-radius: 8px;
+      margin-top: 14px; display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 10px; font-size: 13px; font-weight: 700;
+    }
+    .option-group { display: flex; align-items: center; gap: 12px; }
+
     /* 대기열 목록 */
     .queue-card { display: none; }
     .queue-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
     .queue-title { font-size: 15px; font-weight: 800; color: #0f172a; }
-    .queue-list { display: flex; flex-direction: column; gap: 8px; max-height: 350px; overflow-y: auto; margin-bottom: 14px; }
+    .queue-list { display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; margin-bottom: 14px; }
     .queue-item {
       display: flex; justify-content: space-between; align-items: center;
       padding: 10px 14px; background: #f1f5f9; border-radius: 8px; font-size: 13px; font-weight: 700;
@@ -50,6 +58,12 @@
     .queue-item.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
     .queue-item.processing { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
 
+    /* 뱃지 스타일 */
+    .badge { padding: 3px 7px; border-radius: 4px; font-size: 11px; font-weight: 800; }
+    .badge-new { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+    .badge-dup { background: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; }
+    .badge-batch-dup { background: #f3e8ff; color: #7e22ce; border: 1px solid #e9d5ff; }
+
     /* 테이블 */
     table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12.5px; }
     th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; }
@@ -57,9 +71,7 @@
 
     .btn-group { display: flex; gap: 10px; margin-top: 16px; }
     .btn { flex: 1; padding: 13px; border: none; border-radius: 8px; font-size: 14px; font-weight: 800; cursor: pointer; text-align: center; }
-    .btn-primary { background: #0284c7; color: white; }
     .btn-success { background: #16a34a; color: white; }
-    .btn-secondary { background: #64748b; color: white; }
     .btn:disabled { background: #cbd5e1; cursor: not-allowed; }
 
     .status { margin-top: 12px; font-weight: bold; font-size: 13.5px; text-align: center; }
@@ -89,8 +101,20 @@
         <div class="paste-desc">
           <b>PDF 문서</b> 및 <b>캡처 이미지(.png, .jpg)</b>를 <b>여러 개 동시 선택</b>하여 일괄 분석할 수 있습니다.
         </div>
-        <!-- multiple 속성 추가 -->
         <input type="file" id="fileInput" multiple accept="image/*,application/pdf" style="display: none;">
+      </div>
+
+      <!-- 중복 처리 설정 바 -->
+      <div class="option-box">
+        <span>⚙️ 시트 중복 코드 발생 시 동작:</span>
+        <div class="option-group">
+          <label style="font-weight:normal; margin:0; cursor:pointer;">
+            <input type="radio" name="dupPolicy" value="overwrite" checked> 기존 데이터 덮어쓰기(업데이트)
+          </label>
+          <label style="font-weight:normal; margin:0; cursor:pointer;">
+            <input type="radio" name="dupPolicy" value="skip"> 중복 항목 저장 건너뛰기
+          </label>
+        </div>
       </div>
 
       <div id="status" class="status"></div>
@@ -105,15 +129,15 @@
 
       <div class="queue-list" id="queueList"></div>
 
-      <!-- 요약 테이블 -->
+      <!-- 요약 테이블 (중복 상태 열 포함) -->
       <table id="summaryTable">
         <thead>
           <tr>
-            <th style="width: 15%;">에러코드</th>
-            <th style="width: 20%;">기종</th>
+            <th style="width: 14%;">에러코드</th>
+            <th style="width: 18%;">기종</th>
             <th style="width: 25%;">고장 유형</th>
             <th style="width: 25%;">고장 이벤트</th>
-            <th style="width: 15%;">상태</th>
+            <th style="width: 18%;">중복 여부</th>
           </tr>
         </thead>
         <tbody id="summaryBody"></tbody>
@@ -130,7 +154,25 @@
   <script>
     if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = '';
     let parsedResults = [];
-    let isProcessing = false;
+    let existingSheetDtcs = new Set();
+
+    // 초기 로딩 시 시트에 등록된 기존 DTC 목록 가져오기 (실시간 중복 체크용)
+    window.onload = () => {
+      fetchExistingSheetDtcs();
+    };
+
+    async function fetchExistingSheetDtcs() {
+      const url = document.getElementById('scriptUrl').value.trim();
+      try {
+        const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          existingSheetDtcs = new Set(data.map(d => (d.dtc || '').toUpperCase().trim()).filter(Boolean));
+        }
+      } catch (err) {
+        console.warn('기존 DB 목록 로드 실패:', err);
+      }
+    }
 
     // 1. 키보드 Ctrl + V 클립보드 이미지 캡처 처리
     window.addEventListener('paste', (e) => {
@@ -165,6 +207,7 @@
     async function handleMultipleFiles(files) {
       if (!files || files.length === 0) return;
       document.getElementById('queueCard').style.display = 'block';
+      await fetchExistingSheetDtcs(); // 최신 DB 상태 갱신
       
       showStatus(`${files.length}개 파일 순차 분석 시작...`, 'loading');
 
@@ -172,7 +215,6 @@
         const file = files[i];
         const itemIndex = parsedResults.length;
         
-        // 큐 UI 항목 추가
         addQueueItemUI(itemIndex, file.name || `캡처 이미지 #${itemIndex + 1}`);
 
         try {
@@ -186,7 +228,19 @@
           }
 
           if (parsedItem && parsedItem.dtc) {
+            // 중복 상태 판별
+            const dtcUpper = parsedItem.dtc.toUpperCase().trim();
+            let dupStatus = 'NEW'; // 신규
+
+            if (parsedResults.some(r => r.dtc.toUpperCase().trim() === dtcUpper)) {
+              dupStatus = 'BATCH_DUP'; // 현재 대기열 내 중복
+            } else if (existingSheetDtcs.has(dtcUpper)) {
+              dupStatus = 'SHEET_DUP'; // 기존 구글 시트에 이미 존재하는 중복
+            }
+
+            parsedItem._dupStatus = dupStatus;
             parsedResults.push(parsedItem);
+            
             updateQueueStatus(itemIndex, `✅ ${parsedItem.dtc} 완료`, 'done');
             addSummaryRow(parsedItem);
           } else {
@@ -199,7 +253,10 @@
 
       document.getElementById('parsedCount').innerText = parsedResults.length;
       document.getElementById('btnSaveAll').disabled = parsedResults.length === 0;
-      showStatus(`총 ${parsedResults.length}건 분석 완료! [일괄 저장]을 눌러 시트에 등록하세요.`, 'success');
+      
+      const newCount = parsedResults.filter(r => r._dupStatus === 'NEW').length;
+      const dupCount = parsedResults.length - newCount;
+      showStatus(`분석 완료: 총 ${parsedResults.length}건 (신규 ${newCount}건, 중복/수정 ${dupCount}건)`, 'success');
       fileInput.value = '';
     }
 
@@ -276,21 +333,34 @@
     }
 
     // ==========================================
-    // 💾 구글 시트 일괄 저장 (Batch Save)
+    // 💾 구글 시트 일괄 저장 (중복 정책 적용)
     // ==========================================
     async function saveAllToGoogleSheet() {
       if (parsedResults.length === 0) return;
       const url = document.getElementById('scriptUrl').value.trim();
       const btn = document.getElementById('btnSaveAll');
+      const dupPolicy = document.querySelector('input[name="dupPolicy"]:checked').value;
       btn.disabled = true;
-      showStatus(`구글 시트에 ${parsedResults.length}건 일괄 저장 중...`, 'loading');
+
+      // 건너뛰기 모드일 경우 신규 항목만 필터링
+      let targetItems = parsedResults;
+      if (dupPolicy === 'skip') {
+        targetItems = parsedResults.filter(r => r._dupStatus === 'NEW');
+        if (targetItems.length === 0) {
+          alert('저장할 신규 항목이 없습니다. (모두 중복)');
+          btn.disabled = false;
+          return;
+        }
+      }
+
+      showStatus(`구글 시트에 ${targetItems.length}건 저장 중...`, 'loading');
 
       let savedCount = 0;
-      for (let item of parsedResults) {
+      for (let item of targetItems) {
         try {
           const formData = new URLSearchParams();
           for (let k in item) {
-            formData.append(k, item[k] || '');
+            if (!k.startsWith('_')) formData.append(k, item[k] || '');
           }
           formData.append('mode', 'overwrite');
 
@@ -306,7 +376,8 @@
         }
       }
 
-      showStatus(`🎉 총 ${savedCount}건의 진단서가 구글 시트에 안전하게 저장되었습니다!`, 'success');
+      await fetchExistingSheetDtcs();
+      showStatus(`🎉 총 ${savedCount}건의 진단서가 구글 시트에 안전하게 등록되었습니다!`, 'success');
       btn.disabled = false;
     }
 
@@ -315,7 +386,7 @@
       const div = document.createElement('div');
       div.id = `qItem_${idx}`;
       div.className = 'queue-item processing';
-      div.innerHTML = `<span>📄 ${name}</span><span class="status-badge">분석 준비 중...</span>`;
+      div.innerHTML = `<span>📄 ${name}</span><span class="status-badge">분석 중...</span>`;
       qList.appendChild(div);
     }
 
@@ -330,12 +401,20 @@
     function addSummaryRow(d) {
       const tbody = document.getElementById('summaryBody');
       const tr = document.createElement('tr');
+
+      let badgeHtml = '<span class="badge badge-new">🟢 신규 등록</span>';
+      if (d._dupStatus === 'SHEET_DUP') {
+        badgeHtml = '<span class="badge badge-dup">🟠 기존 덮어쓰기</span>';
+      } else if (d._dupStatus === 'BATCH_DUP') {
+        badgeHtml = '<span class="badge badge-batch-dup">🟣 파일 내 중복</span>';
+      }
+
       tr.innerHTML = `
         <td><b>${d.dtc}</b></td>
         <td>${d.modelType || '-'}</td>
         <td>${d.compFull || '-'}</td>
         <td>${d.event || '-'}</td>
-        <td style="color:#16a34a; font-weight:bold;">준비 완료</td>
+        <td>${badgeHtml}</td>
       `;
       tbody.appendChild(tr);
     }
