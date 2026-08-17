@@ -48,12 +48,12 @@
     .queue-item.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
     .queue-item.processing { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
 
-    .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 800; display: inline-block; }
+    .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 800; display: inline-block; white-space: nowrap; }
     .badge-new { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
     .badge-variant { background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; }
     .badge-dup { background: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; }
 
-    table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12.5px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
     th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; }
     th { background: #f8fafc; font-weight: 700; color: #475569; }
 
@@ -86,7 +86,7 @@
         <div class="paste-icon">📑</div>
         <div class="paste-title">여러 개 파일 선택 / 드래그 또는 <span class="kbd-badge">Ctrl + V</span> 붙여넣기</div>
         <div class="paste-desc">
-          같은 고장 코드라도 <b>기종이나 조치 내용이 다르면 별도 행으로 안전하게 분리 저장</b>됩니다.
+          <b>일련번호(시리얼)</b> 또는 <b>기종</b>이 다른 진단서는 <b>별도의 진단서로 자동 분리 저장</b>됩니다.
         </div>
         <input type="file" id="fileInput" multiple accept="image/*,application/pdf" style="display: none;">
       </div>
@@ -102,14 +102,15 @@
 
       <div class="queue-list" id="queueList"></div>
 
+      <!-- 요약 테이블 (일련번호 범위 표시) -->
       <table id="summaryTable">
         <thead>
           <tr>
             <th style="width: 14%;">에러코드</th>
-            <th style="width: 20%;">기종</th>
+            <th style="width: 22%;">적용 기종 / 일련번호 범위</th>
             <th style="width: 24%;">고장 유형</th>
-            <th style="width: 24%;">고장 이벤트</th>
-            <th style="width: 18%;">저장 구분</th>
+            <th style="width: 22%;">고장 이벤트</th>
+            <th style="width: 18%;">저장 상태</th>
           </tr>
         </thead>
         <tbody id="summaryBody"></tbody>
@@ -184,26 +185,33 @@
           }
 
           if (parsedItem && parsedItem.dtc) {
-            // 정밀 중복 및 변종 판별
+            // 일련번호 포함 복합 키 판별
             const dtcUpper = parsedItem.dtc.toUpperCase().trim();
             const curModel = (parsedItem.modelType || '').trim();
+            const curFactory = (parsedItem.factory || '').trim();
+            const curStart = (parsedItem.serialStart || '').trim();
+            const curEnd = (parsedItem.serialEnd || '').trim();
             const curEvent = (parsedItem.event || '').trim();
 
             const matchExisting = existingDbItems.filter(d => (d.dtc || '').toUpperCase().trim() === dtcUpper);
 
             let dupStatus = 'NEW';
             if (matchExisting.length === 0) {
-              dupStatus = 'NEW'; // 신규 DTC
+              dupStatus = 'NEW'; // 완전 신규 코드
             } else {
-              // 코드는 존재함 -> 기종/이벤트 일치 여부 확인
+              // 에러코드가 같은 항목 중 일련번호/기종/이벤트 완전 일치 여부 확인
               const exactMatch = matchExisting.find(d => 
-                (d.modelType || '').trim() === curModel && (d.event || '').trim() === curEvent
+                (d.modelType || '').trim() === curModel &&
+                (d.factory || '').trim() === curFactory &&
+                (d.serialStart || '').trim() === curStart &&
+                (d.serialEnd || '').trim() === curEnd &&
+                (d.event || '').trim() === curEvent
               );
 
               if (exactMatch) {
                 dupStatus = 'EXACT_DUP'; // 완전 일치 (덮어쓰기)
               } else {
-                dupStatus = 'VARIANT_NEW'; // 코드는 같으나 기종/내용 다름 -> 별도 행 추가
+                dupStatus = 'VARIANT_NEW'; // 일련번호/기종이 다름 -> 별도 분리 저장
               }
             }
 
@@ -302,7 +310,7 @@
       }
 
       await fetchExistingDb();
-      showStatus(`🎉 총 ${savedCount}건의 진단서가 안전하게 저장되었습니다!`, 'success');
+      showStatus(`🎉 총 ${savedCount}건의 진단서가 일련번호/기종별로 안전하게 분리 등록되었습니다!`, 'success');
       btn.disabled = false;
     }
 
@@ -329,14 +337,20 @@
 
       let badgeHtml = '<span class="badge badge-new">🟢 신규 등록</span>';
       if (d._dupStatus === 'VARIANT_NEW') {
-        badgeHtml = '<span class="badge badge-variant">🟡 변종 추가 (별도저장)</span>';
+        badgeHtml = '<span class="badge badge-variant">🟡 일련번호 변종 (별도저장)</span>';
       } else if (d._dupStatus === 'EXACT_DUP') {
-        badgeHtml = '<span class="badge badge-dup">🟠 기존 갱신</span>';
+        badgeHtml = '<span class="badge badge-dup">🟠 기존 덮어쓰기</span>';
+      }
+
+      // 일련번호 범위 문자열 조합
+      let serialRange = '';
+      if (d.factory || d.serialStart || d.serialEnd) {
+        serialRange = `<br><span style="font-size:11px; color:#0284c7; font-weight:bold;">[${d.factory || '-'}] ${d.serialStart || '시작'} ~ ${d.serialEnd || '종료'}</span>`;
       }
 
       tr.innerHTML = `
         <td><b>${d.dtc}</b></td>
-        <td>${d.modelType || '-'}</td>
+        <td><b>${d.modelType || 'EW140E Volvo'}</b>${serialRange}</td>
         <td>${d.compFull || '-'}</td>
         <td>${d.event || '-'}</td>
         <td>${badgeHtml}</td>
