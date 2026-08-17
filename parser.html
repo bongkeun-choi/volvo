@@ -65,7 +65,7 @@
       <div class="paste-zone" id="pasteZone" onclick="document.getElementById('fileInput').click()">
         <div class="paste-icon">📑</div>
         <div class="paste-title">파일 선택 / 드래그 또는 <span class="kbd-badge">Ctrl + V</span> 붙여넣기</div>
-        <div class="paste-desc">최신 ISO 규격(P코드) 및 구형 SAE 규격(MID/PID/FMI)을 스스로 인식하고 중복 여부를 실시간 검사합니다.</div>
+        <div class="paste-desc">최신 ISO 규격(P코드) 및 구형 SAE 규격(MID/PID/FMI)을 2단 테이블까지 정밀 인식합니다.</div>
         <input type="file" id="fileInput" multiple accept="image/*,application/pdf" style="display: none;">
       </div>
       <div class="option-box">
@@ -89,7 +89,7 @@
             <th style="width: 12%;">구분</th>
             <th style="width: 18%;">에러코드 (DTC)</th>
             <th style="width: 22%;">적용 기종 / 일련번호</th>
-            <th style="width: 28%;">고장 유형 / 이벤트</th>
+            <th style="width: 28%;">고장 유형 / 파라미터</th>
             <th style="width: 20%;">중복 검사 상태</th>
           </tr>
         </thead>
@@ -144,7 +144,7 @@
             updateQueueStatus(itemIndex, '이미지 OCR 분석 중...', 'processing');
             resObj = await processImageOCR(file);
           } else if (file.name.toLowerCase().endsWith('.pdf')) {
-            updateQueueStatus(itemIndex, 'PDF 레이아웃 분석 중...', 'processing');
+            updateQueueStatus(itemIndex, '2D 레이아웃 공간 파싱 중...', 'processing');
             resObj = await processPdf(file);
           }
 
@@ -203,98 +203,105 @@
           try {
             const typedarray = new Uint8Array(this.result);
             const pdf = await pdfjsLib.getDocument({ data: typedarray, disableFontFace: true }).promise;
-            let fullText = '';
+            let allItems = [];
             for (let p = 1; p <= pdf.numPages; p++) {
               const page = await pdf.getPage(p), content = await page.getTextContent();
-              const items = content.items.map(it => ({ str: it.str.trim(), y: it.transform[5], x: it.transform[4] })).filter(it => it.str.length > 0);
-              items.sort((a, b) => (b.y - a.y) || (a.x - b.x));
-              let lines = [], currY = null, currLine = [];
-              for (let it of items) {
-                if (currY === null || Math.abs(it.y - currY) > 4) { if (currLine.length) lines.push(currLine.join(' ')); currLine = [it.str]; currY = it.y; }
-                else currLine.push(it.str);
-              }
-              if (currLine.length) lines.push(currLine.join(' '));
-              fullText += lines.join('\n') + '\n';
+              const pageItems = content.items.map(it => ({
+                str: it.str.trim(),
+                x: it.transform[4],
+                y: it.transform[5] + (pdf.numPages - p) * 1000
+              })).filter(it => it.str.length > 0);
+              allItems = allItems.concat(pageItems);
             }
 
-            const clean = (s) => s ? s.replace(/\r?\n+/g, ' ').replace(/\s+/g, ' ').trim() : '';
-            const cleanBullets = (s) => {
-              if (!s) return '없음';
-              const lines = s.split(/[\r\n¡○•●\t]+/).map(l => l.replace(/^[:\s\-O0]+/, '').trim()).filter(l => l && l !== '없음');
-              return lines.length > 0 ? lines.join(' | ') : '없음';
-            };
-
+            allItems.sort((a, b) => (b.y - a.y) || (a.x - b.x));
+            const fullText = allItems.map(it => it.str).join(' ');
             const isSae = /MID\s*\d+|PID\s*\d+|SID\s*\d+|FMI\s*\d+/i.test(fullText);
 
             if (isSae) {
               const midMatch = fullText.match(/MID\s*(\d+)/i);
               const pidMatch = fullText.match(/(PID|PPID|SID|PSID)\s*(\d+)/i);
-              const mid = midMatch ? midMatch[1] : '';
+              const mid = midMatch ? midMatch[1] : '128';
               const pidType = pidMatch ? pidMatch[1] : 'PID';
-              const pid = pidMatch ? pidMatch[2] : '';
+              const pid = pidMatch ? pidMatch[2] : '100';
+              const dtc = `MID${mid} ${pidType}${pid}`;
 
-              const dtc = (mid && pid) ? `MID${mid} ${pidType}${pid}` : 'MID128 PID100';
-              let disp = (mid && pid) ? `${mid} ${pidType}${pid}` : dtc;
-              const mDisp = fullText.match(/텍스트\s*프레젠테이션\s*([^\r\n]+)/);
-              if (mDisp) disp = clean(mDisp[1]);
+              let displayMsg = `${mid} ${pidType}${pid}`;
+              const mDisp = fullText.match(/텍스트\s*프레젠테이션\s*([0-9A-Z\s]+)/i);
+              if (mDisp) displayMsg = mDisp[1].trim();
 
-              let modelType = 'EW145B Volvo', factory = '', serialStart = '', serialEnd = '';
-              const serialBlock = fullText.match(/일련\s*번호에\s*대해\s*유효[\s\S]*?(?=SAE|장비|기준|$)/i);
-              if (serialBlock) {
-                const lines = serialBlock[0].split('\n').map(l => l.trim()).filter(l => l.length > 0);
-                const dataLines = lines.filter(l => !l.includes('일련 번호에 대해 유효') && !l.includes('모델 종류') && !l.includes('생산 사업장') && !l.includes('일련 번호'));
-                if (dataLines.length > 0) {
-                  const rowText = dataLines.join(' ').replace(/\s+/g, ' ').trim();
-                  const mFull = rowText.match(/^(.*?)\s+([A-Za-z가-힣]+)\s+(\d{4,8})\s+(\d{4,8})$/);
-                  if (mFull) {
-                    modelType = mFull[1]; factory = mFull[2]; serialStart = mFull[3]; serialEnd = mFull[4];
-                  } else {
-                    const parts = rowText.split(/\s+/);
-                    if (parts.length >= 4 && /^\d+$/.test(parts[parts.length - 1]) && /^\d+$/.test(parts[parts.length - 2])) {
-                      serialEnd = parts.pop();
-                      serialStart = parts.pop();
-                      factory = parts.pop();
-                      modelType = parts.join(' ');
-                    }
-                  }
-                }
+              let modelType = 'EW145B Volvo', factory = 'Changwon', serialStart = '', serialEnd = '';
+              const mSer = fullText.match(/([A-Z0-9]+\s+Volvo)\s+([A-Za-z가-힣]+)\s+(\d{4,8})\s+(\d{4,8})/);
+              if (mSer) {
+                modelType = mSer[1]; factory = mSer[2]; serialStart = mSer[3]; serialEnd = mSer[4];
               }
 
-              let ecu = mid ? `MID${mid} 제어 유니트` : '';
-              const mEcu = fullText.match(/MID[\/\s]*컨트롤\s*유니트\s*([^\r\n]+)/i);
-              if (mEcu) ecu = clean(mEcu[1]);
+              let ecu = `MID${mid} 제어 유니트`;
+              const mEcu = fullText.match(/MID[\/\s]*컨트롤\s*유니트\s*([^\n\r]+?)(?=(?:PID|PPID|SID|PSID|장비|$))/i);
+              if (mEcu) ecu = mEcu[1].replace(/MID\d+/g, '').trim();
+              if (ecu) ecu = `MID${mid} ` + ecu.replace(/^[:\s\-]+/, '');
 
-              let paramName = pid ? `${pidType}${pid}` : '';
-              const mParam = fullText.match(/(?:PID\/PPID\/SID\/PSID|PID|PPID|SID|PSID)\s*([^\r\n]+)/i);
-              if (mParam) paramName = clean(mParam[1]);
+              let paramName = `${pidType}${pid}`;
+              const mParam = fullText.match(/(?:PID\/PPID\/SID\/PSID|PID|PPID|SID|PSID)\s*([^\n\r]+?)(?=(?:장비|텍스트|기준|$))/i);
+              if (mParam) {
+                let pClean = mParam[1].replace(new RegExp(`^${pidType}\\s*${pid}`, 'i'), '').trim();
+                pClean = pClean.replace(/^[:\s\-]+/, '').trim();
+                paramName = `${pidType}${pid} ${pClean}`.trim();
+              }
 
               let standard = '';
-              const mStd = fullText.match(/기준\s*([^\r\n]+)/);
-              if (mStd && !mStd[1].includes('고장 모드 진단')) standard = clean(mStd[1]);
+              const mStd = fullText.match(/기준\s+([A-Za-z가-힣0-9\s]+?)(?=(?:고장\s*모드|진단|$))/i);
+              if (mStd && !mStd[1].includes('고장 모드')) standard = mStd[1].trim();
 
-              const fmiMatches = fullText.match(/고장\s*모드\s*FMI\s*(\d+)|FMI\s*(\d+)/gi) || ['FMI 3', 'FMI 5'];
-              const uniqueFmis = Array.from(new Set(fmiMatches.map(m => m.replace(/\D/g, '')).filter(Boolean)));
+              // FMI 블록 공간 분할 파싱
+              const fmiHeaders = allItems.filter(it => /^FMI\s*(\d+)$/i.test(it.str) || /고장\s*모드\s*FMI\s*(\d+)/i.test(it.str));
+              const fmiList = [];
 
-              const fmiList = uniqueFmis.map(fmi => {
-                const secRegex = new RegExp("FMI\\s*" + fmi + "([\\s\\S]*?)(?=(?:고장\\s*모드\\s*FMI\\s*\\d+|고장\\s*모드|Guided Diagnostics|$))", "i");
-                const secMatch = fullText.match(secRegex), secText = secMatch ? secMatch[1] : '';
-                const mCond = secText.match(/탐지\s*조건:?\s*([\s\S]*?)(?=(?:증상|가능한|조치|$))/i);
-                const mSym = secText.match(/증상:?\s*([\s\S]*?)(?=(?:가능한|조치|$))/i);
-                const mCause = secText.match(/가능한\s*이유:?\s*([\s\S]*?)(?=(?:조치|$))/i);
-                const mAct = secText.match(/조치:?\s*([^\r\n]+)/i);
-                return {
-                  fmi: fmi,
-                  cond: mCond ? clean(mCond[1]) : '',
-                  symptom: mSym ? cleanBullets(mSym[1]) : '없음',
-                  causes: mCause ? cleanBullets(mCause[1]) : '없음',
-                  actions: mAct ? clean(mAct[1]) : disp
+              for (let i = 0; i < fmiHeaders.length; i++) {
+                const curH = fmiHeaders[i];
+                const fmiNum = (curH.str.match(/\d+/) || ['3'])[0];
+                const topY = curH.y + 15;
+                const bottomY = (i < fmiHeaders.length - 1) ? fmiHeaders[i + 1].y + 15 : 0;
+
+                const blockItems = allItems.filter(it => it.y <= topY && it.y > bottomY);
+
+                // 1. 탐지 조건 (상단 행)
+                let condText = '';
+                const condItems = blockItems.filter(it => it.str.includes('감지') || it.str.includes('전압') || it.str.includes('탐지'));
+                if (condItems.length > 0) {
+                  condText = condItems.map(it => it.str).join(' ').replace(/탐지\s*조건:?/g, '').trim();
+                }
+
+                // 2. 조치 (하단 행)
+                let actText = displayMsg;
+                const actIdx = blockItems.findIndex(it => it.str.includes('조치'));
+                if (actIdx !== -1 && actIdx + 1 < blockItems.length) {
+                  actText = blockItems.slice(actIdx + 1, actIdx + 4).map(it => it.str).join(' ').trim();
+                }
+
+                // 3. 2단 컬럼 분할: 좌측(증상, X < 310) vs 우측(가능한 이유, X >= 310)
+                const symItems = blockItems.filter(it => it.x < 310 && !it.str.includes('고장') && !it.str.includes('FMI') && !it.str.includes('증상') && !it.str.includes('조치'));
+                const causeItems = blockItems.filter(it => it.x >= 310 && !it.str.includes('탐지') && !it.str.includes('가능한') && !it.str.includes('이유') && !it.str.includes(actText));
+
+                const cleanList = (arr) => {
+                  const txt = arr.map(it => it.str).join(' ');
+                  const lines = txt.split(/[\n¡○•●]+/).map(s => s.replace(/^[:\s\-O0]+/, '').trim()).filter(s => s && s !== '없음');
+                  return lines.length > 0 ? lines.join(' | ') : '없음';
                 };
-              });
+
+                fmiList.push({
+                  fmi: fmiNum,
+                  cond: condText || '-',
+                  symptom: cleanList(symItems),
+                  causes: cleanList(causeItems),
+                  actions: actText || displayMsg
+                });
+              }
 
               resolve({
                 docType: 'sae',
                 item: {
-                  dtc: dtc, displayMsg: disp, modelType: modelType, factory: factory,
+                  dtc: dtc, displayMsg: displayMsg, modelType: modelType, factory: factory,
                   serialStart: serialStart, serialEnd: serialEnd, ecu: ecu, paramName: paramName,
                   standard: standard, fmiList: fmiList
                 }
@@ -328,10 +335,10 @@
       let targetItems = parsedResults;
       if (dupPolicy === 'skip') {
         targetItems = parsedResults.filter(r => r._dupStatus === 'NEW' || r._dupStatus === 'VARIANT_NEW');
-        if (targetItems.length === 0) { alert('저장할 신규 항목이 없습니다. (모두 중복)'); btn.disabled = false; return; }
+        if (targetItems.length === 0) { alert('저장할 신규 항목이 없습니다.'); btn.disabled = false; return; }
       }
 
-      showStatus(`구글 시트에 ${targetItems.length}건 저장 중...`, 'loading');
+      showStatus(`구글 시트에 ${targetItems.length}건 정밀 저장 중...`, 'loading');
       let savedCount = 0;
       for (let item of targetItems) {
         try {
