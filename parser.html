@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>볼보 DTC PDF 분석기</title>
+  <title>볼보 DTC 화면 캡처 & PDF 분석기</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', sans-serif; }
@@ -26,34 +26,44 @@
     label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 13.5px; }
     input[type="text"] { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; }
     
-    .drop-zone { border: 2px dashed #0284c7; padding: 40px 15px; text-align: center; border-radius: 12px; cursor: pointer; background: #f0f9ff; font-weight: 700; font-size: 15px; color: #0369a1; }
-    .drop-zone:hover { background: #e0f2fe; }
-    
-    .progress-box { margin-top: 15px; display: none; }
-    .progress-bar-bg { width: 100%; height: 10px; background: #e2e8f0; border-radius: 5px; overflow: hidden; }
-    .progress-bar-fill { height: 100%; width: 0%; background: #0284c7; transition: width 0.2s; }
-    .progress-text { font-size: 12.5px; font-weight: bold; color: #475569; margin-top: 5px; text-align: right; }
+    /* 캡처 붙여넣기 & 드래그 영역 */
+    .paste-zone {
+      border: 2.5px dashed #0284c7; padding: 45px 15px; text-align: center; border-radius: 14px;
+      cursor: pointer; background: #f0f9ff; transition: all 0.2s;
+    }
+    .paste-zone:hover { background: #e0f2fe; border-color: #0369a1; }
+    .paste-icon { font-size: 40px; margin-bottom: 10px; }
+    .paste-title { font-size: 17px; font-weight: 900; color: #0284c7; margin-bottom: 6px; }
+    .paste-desc { font-size: 13px; color: #64748b; line-height: 1.5; }
+    .kbd-badge { background: #0f172a; color: white; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-weight: bold; }
 
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
-    th, td { border: 1px solid #e2e8f0; padding: 9px 11px; text-align: left; }
-    th { background: #f8fafc; font-weight: 700; color: #475569; }
+    /* 이미지 미리보기 썸네일 */
+    .img-preview-box { text-align: center; margin-top: 15px; display: none; }
+    .img-preview-box img { max-width: 100%; max-height: 250px; border-radius: 8px; border: 1px solid #cbd5e1; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
 
-    .badge { display: inline-block; padding: 3px 7px; border-radius: 4px; font-size: 11px; font-weight: 800; }
-    .badge-new { background: #dcfce7; color: #166534; }
-    .badge-dup { background: #fee2e2; color: #991b1b; }
-    .badge-mod { background: #fef3c7; color: #92400e; }
-    .badge-saved { background: #e0f2fe; color: #0369a1; }
+    /* 상태 텍스트 */
+    .status { margin-top: 15px; font-weight: bold; font-size: 14px; text-align: center; }
+    .success { color: #16a34a; }
+    .error { color: #dc2626; }
+    .loading { color: #0284c7; }
 
-    .btn-group { display: flex; gap: 10px; margin-top: 15px; }
-    .btn { padding: 12px 18px; border: none; border-radius: 8px; font-size: 14px; font-weight: 800; cursor: pointer; }
-    .btn-primary { background: #0284c7; color: white; flex: 2; }
-    .btn-secondary { background: #64748b; color: white; flex: 1; }
+    /* 미리보기 테이블 */
+    table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
+    th, td { border: 1px solid #cbd5e1; padding: 10px 12px; text-align: left; }
+    th { background: #f8fafc; font-weight: 700; color: #475569; width: 28%; }
+    td { background: #ffffff; line-height: 1.5; font-weight: 500; }
+
+    .btn-group { display: flex; gap: 10px; margin-top: 18px; }
+    .btn { flex: 1; padding: 13px; border: none; border-radius: 8px; font-size: 14px; font-weight: 800; cursor: pointer; text-align: center; }
+    .btn-primary { background: #0284c7; color: white; }
+    .btn-warning { background: #f59e0b; color: white; }
+    .btn-secondary { background: #64748b; color: white; }
   </style>
 </head>
 <body>
 
   <div class="app-header">
-    <h1>🛠️ 볼보 DTC 진단 PDF 일괄 분석기</h1>
+    <h1>🛠️ 볼보 DTC 화면 캡처 & 분석기</h1>
     <a href="index.html" class="btn-home">🔍 진단서 조회 (홈)</a>
   </div>
 
@@ -64,43 +74,38 @@
         <input type="text" id="scriptUrl" value="https://script.google.com/macros/s/AKfycbzV5H2kowUqmGNO2UloeU_2OMYT0ZbyyzsS3iN4LXLhY_WvZ1maxiIOZ9jvvCg99aM/exec">
       </div>
       
-      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
-        📂 볼보 진단 PDF 파일을 끌어다 놓거나 클릭하세요 (다중 파일 지원)
-        <input type="file" id="fileInput" accept="application/pdf" multiple style="display: none;">
+      <!-- 캡처 붙여넣기 및 파일 드래그 존 -->
+      <div class="paste-zone" id="pasteZone" onclick="document.getElementById('fileInput').click()">
+        <div class="paste-icon">📋</div>
+        <div class="paste-title">화면 캡처 후 여기서 <span class="kbd-badge">Ctrl + V</span> 를 누르세요</div>
+        <div class="paste-desc">
+          또는 클릭하여 <b>이미지(.png, .jpg)</b> 또는 <b>PDF 파일</b>을 선택하세요 (드래그 앤 드롭 지원)
+        </div>
+        <input type="file" id="fileInput" accept="image/*,application/pdf" style="display: none;">
       </div>
 
-      <div class="progress-box" id="progressBox">
-        <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressBar"></div></div>
-        <div class="progress-text" id="progressText">처리 중...</div>
+      <div class="img-preview-box" id="imgPreviewBox">
+        <img id="captureImg" src="" alt="캡처 이미지 미리보기">
       </div>
+
+      <div id="status" class="status"></div>
     </div>
 
-    <div class="card" id="listCard" style="display: none;">
-      <h3>📋 분석 결과 목록</h3>
-      <table>
-        <thead>
-          <tr>
-            <th style="width: 6%; text-align:center;"><input type="checkbox" id="checkAll" checked onclick="toggleCheckAll(this)"></th>
-            <th style="width: 18%;">DTC 코드</th>
-            <th style="width: 26%;">모델 / 제어기</th>
-            <th style="width: 36%;">시스템/구성부품</th>
-            <th style="width: 14%;">상태</th>
-          </tr>
-        </thead>
-        <tbody id="fileTableBody"></tbody>
-      </table>
+    <!-- 14개 필드 분석 결과 카드 -->
+    <div class="card" id="resultCard" style="display: none;">
+      <h3 style="font-size: 16px; font-weight: 800; margin-bottom: 6px;">🔍 분석된 DTC 데이터 (14개 필드)</h3>
+      <table id="previewTable"></table>
 
       <div class="btn-group">
-        <button class="btn btn-primary" id="btnBatchSave" onclick="startBatchSave()">선택 항목 구글 시트에 일괄 저장</button>
-        <button class="btn btn-secondary" onclick="resetQueue()">목록 비우기</button>
+        <button id="btnSave" class="btn btn-primary" onclick="saveToGoogleSheet()">구글 시트에 저장하기</button>
+        <button class="btn btn-secondary" onclick="resetForm()">초기화</button>
       </div>
     </div>
   </div>
 
   <script>
     if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = '';
-    let parsedQueue = [];
-    let existingSheetData = [];
+    let parsedData = null;
 
     const fieldLabels = [
       { key: 'dtc', label: '에러코드' },
@@ -119,125 +124,192 @@
       { key: 'actions', label: '조치' }
     ];
 
-    const dropZone = document.getElementById('dropZone');
+    // ==========================================
+    // 1. 키보드 Ctrl + V 클립보드 이미지 자동 감지
+    // ==========================================
+    window.addEventListener('paste', (e) => {
+      const items = e.clipboardData.items;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const blob = items[i].getAsFile();
+          handleImageFile(blob);
+          e.preventDefault();
+          break;
+        }
+      }
+    });
+
+    // 2. 파일 드래그 & 클릭 선택 처리
+    const pasteZone = document.getElementById('pasteZone');
     const fileInput = document.getElementById('fileInput');
 
-    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.borderColor = '#0369a1'; });
-    dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = '#0284c7'; });
-    dropZone.addEventListener('drop', (e) => {
+    pasteZone.addEventListener('dragover', (e) => { e.preventDefault(); pasteZone.style.borderColor = '#0369a1'; });
+    pasteZone.addEventListener('dragleave', () => { pasteZone.style.borderColor = '#0284c7'; });
+    pasteZone.addEventListener('drop', (e) => {
       e.preventDefault();
-      dropZone.style.borderColor = '#0284c7';
-      if (e.dataTransfer.files.length) handleMultipleFiles(Array.from(e.dataTransfer.files));
+      pasteZone.style.borderColor = '#0284c7';
+      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
     });
     fileInput.addEventListener('change', (e) => {
-      if (e.target.files.length) handleMultipleFiles(Array.from(e.target.files));
+      if (e.target.files.length) handleFile(e.target.files[0]);
     });
 
-    async function handleMultipleFiles(files) {
-      const pdfFiles = files.filter(f => f.name.toLowerCase().endsWith('.pdf'));
-      if (pdfFiles.length === 0) return;
-
-      showProgress(0, pdfFiles.length, '구글 시트 기존 데이터 조회 중...');
-      await fetchExistingData();
-
-      for (let i = 0; i < pdfFiles.length; i++) {
-        showProgress(i + 1, pdfFiles.length, `분석 중 (${i + 1}/${pdfFiles.length}): ${pdfFiles[i].name}`);
-        const parsed = await parseSinglePdf(pdfFiles[i]);
-        if (parsed) {
-          evaluateStatus(parsed);
-          parsedQueue.push(parsed);
-        }
-      }
-
-      hideProgress();
-      renderQueueTable();
-    }
-
-    async function fetchExistingData() {
-      const url = document.getElementById('scriptUrl').value.trim();
-      try {
-        const res = await fetch(url);
-        const data = await res.json();
-        existingSheetData = Array.isArray(data) ? data : [];
-      } catch (e) {
-        existingSheetData = [];
-      }
-    }
-
-    function parseSinglePdf(file) {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = async function() {
-          try {
-            const typedarray = new Uint8Array(this.result);
-            const pdf = await pdfjsLib.getDocument({ data: typedarray, disableFontFace: true }).promise;
-            let fullText = '';
-
-            for (let p = 1; p <= pdf.numPages; p++) {
-              const page = await pdf.getPage(p);
-              const content = await page.getTextContent();
-              const items = content.items.map(it => ({
-                str: it.str.trim(),
-                x: it.transform[4],
-                y: it.transform[5]
-              })).filter(it => it.str.length > 0);
-
-              items.sort((a, b) => (b.y - a.y) || (a.x - b.x));
-
-              let lines = [];
-              let currY = null;
-              let currLine = [];
-
-              for (let it of items) {
-                if (currY === null || Math.abs(it.y - currY) > 4) {
-                  if (currLine.length) lines.push(currLine.join(' '));
-                  currLine = [it.str];
-                  currY = it.y;
-                } else {
-                  currLine.push(it.str);
-                }
-              }
-              if (currLine.length) lines.push(currLine.join(' '));
-              fullText += lines.join('\n') + '\n';
-            }
-
-            const data = parseExact14Fields(fullText);
-            data.fileName = file.name;
-            resolve(data);
-          } catch(err) {
-            resolve(null);
-          }
-        };
-        reader.readAsArrayBuffer(file);
-      });
-    }
-
-    function evaluateStatus(item) {
-      const match = existingSheetData.find(e => (e.dtc || '').trim().toUpperCase() === item.dtc.trim().toUpperCase());
-      if (!match) {
-        item.status = 'NEW';
-        item.checked = true;
+    function handleFile(file) {
+      if (file.type.startsWith('image/')) {
+        handleImageFile(file);
+      } else if (file.name.toLowerCase().endsWith('.pdf')) {
+        handlePdfFile(file);
       } else {
-        let isDiff = false;
-        for (let f of fieldLabels) {
-          if ((match[f.key] || '').trim() !== (item[f.key] || '').trim()) {
-            isDiff = true;
-            break;
-          }
-        }
-        item.status = isDiff ? 'MODIFIED' : 'DUPLICATE';
-        item.checked = isDiff;
+        alert('이미지(.png, .jpg) 또는 PDF 파일만 지원합니다.');
       }
     }
 
-    function parseExact14Fields(text) {
+    // 이미지 파일 -> Base64 변환 후 클라우드 OCR 요청
+    function handleImageFile(file) {
+      showStatus('📸 캡처 이미지 분석 중... (클라우드 OCR)', 'loading');
+      document.getElementById('resultCard').style.display = 'none';
+
+      // 썸네일 미리보기 표시
+      const previewBox = document.getElementById('imgPreviewBox');
+      const img = document.getElementById('captureImg');
+      img.src = URL.createObjectURL(file);
+      previewBox.style.display = 'block';
+
+      const reader = new FileReader();
+      reader.onload = async function() {
+        try {
+          const base64Data = reader.result.split(',')[1];
+          const url = document.getElementById('scriptUrl').value.trim();
+
+          const response = await fetch(url, {
+            method: 'POST',
+            body: JSON.stringify({
+              action: 'parse_image',
+              imageBase64: base64Data,
+              mimeType: file.type || 'image/png'
+            })
+          });
+
+          const resJson = await response.json();
+          if (resJson.status === 'success' && resJson.parsed) {
+            parsedData = resJson.parsed;
+            renderPreviewTable(parsedData);
+            showStatus(`✅ 캡처 화면에서 고장 코드 [${parsedData.dtc}] 분석 완료!`, 'success');
+          } else {
+            throw new Error(resJson.error || '텍스트를 읽지 못했습니다.');
+          }
+        } catch (err) {
+          showStatus('❌ 분석 실패: ' + err.message, 'error');
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // PDF 파일 처리
+    async function handlePdfFile(file) {
+      showStatus('📄 PDF 문서 레이아웃 분석 중...', 'loading');
+      document.getElementById('imgPreviewBox').style.display = 'none';
+      document.getElementById('resultCard').style.display = 'none';
+
+      const reader = new FileReader();
+      reader.onload = async function() {
+        try {
+          const typedarray = new Uint8Array(this.result);
+          const pdf = await pdfjsLib.getDocument({ data: typedarray, disableFontFace: true }).promise;
+          let fullText = '';
+
+          for (let p = 1; p <= pdf.numPages; p++) {
+            const page = await pdf.getPage(p);
+            const content = await page.getTextContent();
+            const items = content.items.map(it => ({ str: it.str.trim(), x: it.transform[4], y: it.transform[5] })).filter(it => it.str.length > 0);
+            items.sort((a, b) => (b.y - a.y) || (a.x - b.x));
+
+            let lines = [], currY = null, currLine = [];
+            for (let it of items) {
+              if (currY === null || Math.abs(it.y - currY) > 4) {
+                if (currLine.length) lines.push(currLine.join(' '));
+                currLine = [it.str];
+                currY = it.y;
+              } else {
+                currLine.push(it.str);
+              }
+            }
+            if (currLine.length) lines.push(currLine.join(' '));
+            fullText += lines.join('\n') + '\n';
+          }
+
+          // 클라이언트 파서 호출
+          parsedData = parseExact14FieldsClient(fullText);
+          renderPreviewTable(parsedData);
+          showStatus(`✅ PDF에서 고장 코드 [${parsedData.dtc}] 분석 완료!`, 'success');
+        } catch (err) {
+          showStatus('❌ PDF 분석 실패: ' + err.message, 'error');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function renderPreviewTable(data) {
+      const table = document.getElementById('previewTable');
+      table.innerHTML = '';
+      fieldLabels.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<th>${item.label}</th><td>${data[item.key] || '-'}</td>`;
+        table.appendChild(tr);
+      });
+      document.getElementById('resultCard').style.display = 'block';
+    }
+
+    async function saveToGoogleSheet() {
+      if (!parsedData) return;
+      const url = document.getElementById('scriptUrl').value.trim();
+      const btn = document.getElementById('btnSave');
+      btn.disabled = true;
+      showStatus('구글 시트에 저장 중...', 'loading');
+
+      try {
+        const formData = new URLSearchParams();
+        for (let k in parsedData) {
+          formData.append(k, parsedData[k] || '');
+        }
+        formData.append('mode', 'overwrite'); // 동일 DTC 존재 시 덮어쓰기
+
+        await fetch(url, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: formData.toString()
+        });
+
+        showStatus(`✅ 구글 시트에 [${parsedData.dtc}] 진단서가 안전하게 저장되었습니다!`, 'success');
+        btn.disabled = false;
+      } catch (err) {
+        showStatus('❌ 저장 실패: ' + err.message, 'error');
+        btn.disabled = false;
+      }
+    }
+
+    function resetForm() {
+      parsedData = null;
+      document.getElementById('imgPreviewBox').style.display = 'none';
+      document.getElementById('resultCard').style.display = 'none';
+      document.getElementById('status').textContent = '';
+      document.getElementById('fileInput').value = '';
+    }
+
+    function showStatus(msg, type) {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = 'status ' + type;
+    }
+
+    // PDF용 보조 정규식 파서
+    function parseExact14FieldsClient(text) {
       const clean = (s) => s ? s.replace(/\n+/g, ' ').trim() : '';
       const dtcMatch = text.match(/([P|U|B|C][0-9A-Z]{5,6}|PID\s*\d+|SE\d+-\d+)/);
       const dtc = dtcMatch ? dtcMatch[1].replace(/\s+/g, '') : '코드미상';
 
-      let modelType = 'EW140E Volvo';
-      let factory = '', serialStart = '', serialEnd = '';
-
+      let modelType = 'EW140E Volvo', factory = '', serialStart = '', serialEnd = '';
       const serialBlock = text.match(/일련\s*번호에\s*대해\s*유효[\s\S]*?(?=ISO|컨트롤|$)/);
       if (serialBlock) {
         const lines = serialBlock[0].split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -245,18 +317,8 @@
         if (dataLines.length > 0) {
           const rowText = dataLines.join(' ').replace(/\s+/g, ' ').trim();
           const mFull = rowText.match(/^(.*?)\s+([A-Za-z가-힣]+)\s+(\d{4,8})\s+(\d{4,8})$/);
-          const m3 = rowText.match(/^(.*?)\s+([A-Za-z가-힣]+)\s+(\d{4,8})$/);
-          const m2 = rowText.match(/^(.*?\bVolvo\b)\s+([A-Za-z가-힣]+)$/i);
-
-          if (mFull) {
-            modelType = mFull[1].trim(); factory = mFull[2].trim(); serialStart = mFull[3].trim(); serialEnd = mFull[4].trim();
-          } else if (m3) {
-            modelType = m3[1].trim(); factory = m3[2].trim(); serialStart = m3[3].trim();
-          } else if (m2) {
-            modelType = m2[1].trim(); factory = m2[2].trim();
-          } else {
-            modelType = rowText;
-          }
+          if (mFull) { modelType = mFull[1]; factory = mFull[2]; serialStart = mFull[3]; serialEnd = mFull[4]; }
+          else modelType = rowText;
         }
       }
 
@@ -267,15 +329,10 @@
       let compFull = '';
       const compRegex = new RegExp("고장\\s*유형[\\s\\S]*?(" + dtc + "[\\s\\S]*?)(?=기준|$)", "i");
       const compMatch = text.match(compRegex);
-      if (compMatch) {
-        compFull = clean(compMatch[1]);
-      } else {
-        const altComp = text.match(/고장\s*유형\s*([^\n기준]+)/);
-        if (altComp) compFull = dtc + ' ' + clean(altComp[1]);
-      }
+      if (compMatch) compFull = clean(compMatch[1]);
 
       const stdMatch = text.match(/기준\s*([\s\S]*?)(?=진단|$)/);
-      const standard = clean(stdMatch ? stdMatch[1] : '냉각시스템, 개요');
+      const standard = clean(stdMatch ? stdMatch[1] : '개요');
 
       const evMatch = text.match(/고장\s*이벤트\s*([\s\S]*?)(?=증상|$)/);
       const event = clean(evMatch ? evMatch[1] : '');
@@ -317,99 +374,7 @@
         if (aLines.length > 0) actions = aLines.join(' | ');
       }
 
-      return {
-        dtc, modelType, factory, serialStart, serialEnd,
-        ecu, compFull, standard, event, symptom,
-        condition, preDtc, causes, actions
-      };
-    }
-
-    function renderQueueTable() {
-      const tbody = document.getElementById('fileTableBody');
-      tbody.innerHTML = '';
-
-      parsedQueue.forEach((item, idx) => {
-        let badgeHtml = '';
-        if (item.status === 'SAVED') badgeHtml = '<span class="badge badge-saved">저장 완료</span>';
-        else if (item.status === 'NEW') badgeHtml = '<span class="badge badge-new">신규</span>';
-        else if (item.status === 'DUPLICATE') badgeHtml = '<span class="badge badge-dup">동일 중복</span>';
-        else if (item.status === 'MODIFIED') badgeHtml = '<span class="badge badge-mod">내용 변경</span>';
-
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td style="text-align:center;"><input type="checkbox" ${item.checked ? 'checked' : ''} onchange="parsedQueue[${idx}].checked = this.checked"></td>
-          <td style="font-weight:bold; color:#dc2626;">${item.dtc}</td>
-          <td><b>${item.modelType}</b><br><span style="color:#64748b; font-size:11px;">${item.ecu}</span></td>
-          <td>${item.compFull}</td>
-          <td>${badgeHtml}</td>
-        `;
-        tbody.appendChild(tr);
-      });
-
-      document.getElementById('listCard').style.display = 'block';
-    }
-
-    function toggleCheckAll(master) {
-      parsedQueue.forEach(item => item.checked = master.checked);
-      renderQueueTable();
-    }
-
-    async function startBatchSave() {
-      const targets = parsedQueue.filter(item => item.checked && item.status !== 'SAVED');
-      if (targets.length === 0) {
-        alert('저장할 대상 파일이 없습니다.');
-        return;
-      }
-
-      const url = document.getElementById('scriptUrl').value.trim();
-      const btn = document.getElementById('btnBatchSave');
-      btn.disabled = true;
-
-      for (let i = 0; i < targets.length; i++) {
-        const item = targets[i];
-        showProgress(i + 1, targets.length, `구글 시트에 저장 중 (${i + 1}/${targets.length}): ${item.dtc}`);
-
-        const formData = new URLSearchParams();
-        for (let k in item) {
-          if (k !== 'checked' && k !== 'status' && k !== 'fileName') {
-            formData.append(k, item[k] || '');
-          }
-        }
-        formData.append('mode', item.status === 'MODIFIED' ? 'overwrite' : 'append');
-
-        try {
-          await fetch(url, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: formData.toString()
-          });
-          item.status = 'SAVED';
-          item.checked = false;
-        } catch (e) {}
-      }
-
-      hideProgress();
-      renderQueueTable();
-      btn.disabled = false;
-      alert('구글 시트에 일괄 저장이 완료되었습니다!');
-    }
-
-    function resetQueue() {
-      parsedQueue = [];
-      document.getElementById('listCard').style.display = 'none';
-      document.getElementById('fileInput').value = '';
-    }
-
-    function showProgress(curr, total, text) {
-      document.getElementById('progressBox').style.display = 'block';
-      const pct = Math.round((curr / total) * 100);
-      document.getElementById('progressBar').style.width = pct + '%';
-      document.getElementById('progressText').innerText = text;
-    }
-
-    function hideProgress() {
-      document.getElementById('progressBox').style.display = 'none';
+      return { dtc, modelType, factory, serialStart, serialEnd, ecu, compFull, standard, event, symptom, condition, preDtc, causes, actions };
     }
   </script>
 </body>
