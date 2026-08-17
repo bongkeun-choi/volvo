@@ -49,7 +49,7 @@
 
     body { background: var(--app-bg); color: #000; padding-bottom: 60px; transition: background 0.25s ease; }
 
-    /* 상단 헤더 */
+    /* 상단 앱 바 */
     .app-header {
       position: sticky; top: 0; z-index: 1000;
       background: var(--app-header-bg); color: var(--app-header-text);
@@ -76,7 +76,7 @@
 
     .container { padding: 14px; max-width: 840px; margin: 0 auto; }
 
-    /* 3단 모드 스위처 */
+    /* 3단 모드 선택 스위처 */
     .mode-switcher {
       display: flex; background: rgba(0,0,0,0.15); padding: 4px; border-radius: 12px;
       margin-bottom: 12px; gap: 4px;
@@ -153,7 +153,7 @@
     }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-    /* 모드 1: 정통 매뉴얼 */
+    /* [모드 1] 정통 매뉴얼 */
     .mode-oem-sheet { background: #ffffff; padding: 30px 25px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); border: 1px solid #94a3b8; color: #000; }
     .oem-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px; }
     .oem-logo { font-size: 22px; font-weight: 900; letter-spacing: 7px; color: #000; font-family: serif; }
@@ -167,7 +167,7 @@
     .oem-stamp { text-align: right; margin-top: 18px; }
     .oem-stamp-box { display: inline-block; border: 1px solid #999; color: #777; padding: 3px 8px; border-radius: 4px; font-size: 11px; }
 
-    /* 모드 2: 모던 카드 */
+    /* [모드 2] 모던 카드 */
     .mode-card-wrap { display: flex; flex-direction: column; gap: 12px; }
     .m-card { background: #ffffff; border-radius: 12px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
     .m-hero { border-left: 5px solid #0284c7; }
@@ -186,7 +186,7 @@
     .m-pills-wrap { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
     .m-dtc-pill { background: #e0f2fe; color: #0284c7; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 800; text-decoration: none; cursor: pointer; border: 1px solid #bae6fd; }
 
-    /* 모드 3: 현장 다크 */
+    /* [모드 3] 현장 다크 */
     .mode-dark-wrap { display: flex; flex-direction: column; gap: 12px; color: #f3f4f6; }
     .d-card { background: #1e293b; border-radius: 12px; padding: 18px; border: 1px solid #334155; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
     .d-hero { border: 1.5px solid #ef4444; background: linear-gradient(180deg, #1e293b 0%, #172033 100%); }
@@ -231,11 +231,10 @@
     <!-- 검색창 + 📷 카메라 버튼 -->
     <div class="search-wrapper">
       <div class="search-input-box">
-        <input type="text" id="searchInput" class="search-input" placeholder="DTC 코드(예: P255601) 입력 또는 촬영..." autocomplete="off" oninput="onSearchInput()" onfocus="onSearchInput()">
+        <input type="text" id="searchInput" class="search-input" placeholder="DTC 코드(예: P204713) 입력 또는 촬영..." autocomplete="off" oninput="onSearchInput()" onfocus="onSearchInput()">
         <button id="clearBtn" class="clear-btn" onclick="clearSearch()">×</button>
         <div id="autocompleteList" class="autocomplete-dropdown"></div>
       </div>
-      <!-- 카메라 버튼 (모바일 카메라 직접 실행) -->
       <button class="btn-camera" onclick="document.getElementById('cameraFileInput').click()" title="계기판 사진 촬영 OCR 검색">
         📷
       </button>
@@ -262,8 +261,8 @@
   <div class="ocr-modal" id="ocrModal">
     <div class="ocr-modal-content">
       <div class="ocr-spinner"></div>
-      <h3 id="ocrStatusTitle" style="font-size: 16px; font-weight: 800; margin-bottom: 6px;">사진에서 DTC 코드 분석 중...</h3>
-      <p id="ocrStatusSub" style="font-size: 13px; color: #64748b;">AI가 계기판 텍스트를 읽고 있습니다.</p>
+      <h3 id="ocrStatusTitle" style="font-size: 16px; font-weight: 800; margin-bottom: 6px;">계기판 사진 전처리 및 분석 중...</h3>
+      <p id="ocrStatusSub" style="font-size: 13px; color: #64748b;">LCD 화면 고대비 보정 및 DTC 추출 중입니다.</p>
     </div>
   </div>
 
@@ -273,12 +272,10 @@
     let currentMode = localStorage.getItem('volvo_viewer_mode') || 'oem';
     let deferredPrompt = null;
 
-    // 1. Service Worker 등록
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
     }
 
-    // 2. 브라우저 정식 설치 프롬프트 캡처
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredPrompt = e;
@@ -309,7 +306,7 @@
     }
 
     // ==========================================
-    // 📷 카메라 사진 AI OCR 분석 및 자동 검색 엔진
+    // 📷 계기판 전용 고정밀 이미지 전처리 + OCR 파서
     // ==========================================
     async function handleCameraOcr(file) {
       if (!file) return;
@@ -318,41 +315,45 @@
       const titleEl = document.getElementById('ocrStatusTitle');
       const subEl = document.getElementById('ocrStatusSub');
       modal.style.display = 'flex';
-      titleEl.innerText = 'AI 엔진 초기화 중...';
-      subEl.innerText = '사진을 분석할 준비를 하고 있습니다.';
+      titleEl.innerText = '계기판 고대비 반전 처리 중...';
+      subEl.innerText = '어두운 LCD 배경을 흰색으로 자동 보정합니다.';
 
       try {
+        // 1단계: 브라우저 내부 Canvas를 통한 고대비 흑백 반전 전처리
+        const preprocessedBlob = await preprocessLcdImage(file);
+
+        titleEl.innerText = 'AI 엔진 텍스트 판독 중...';
+
         const worker = await Tesseract.createWorker('eng', 1, {
           logger: m => {
             if (m.status === 'recognizing text') {
               const pct = Math.round((m.progress || 0) * 100);
-              titleEl.innerText = `사진에서 DTC 코드 인식 중... (${pct}%)`;
+              titleEl.innerText = `고장 코드 판독 중... (${pct}%)`;
             }
           }
         });
 
-        // 알파벳 대문자 및 숫자 위주로 정밀 필터링
+        // 알파벳 대문자, 숫자 위주 인식
         await worker.setParameters({
-          tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-'
+          tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz: '
         });
 
-        const ret = await worker.recognize(file);
+        const ret = await worker.recognize(preprocessedBlob);
         await worker.terminate();
 
-        const rawText = ret.data.text.replace(/[\s\-_]+/g, '').toUpperCase();
-        console.log("OCR 원본 인식 텍스트:", rawText);
+        const rawText = ret.data.text.toUpperCase();
+        console.log("OCR 판독 원본 결과:\n", rawText);
 
-        // 볼보 DTC 패턴 매칭 (예: P245700, U300001, P040A11, P255601, PID123 등)
-        const match = rawText.match(/([PUB C][0-9A-Z]{5,6}|PID\d+|SE\d+)/);
+        // 2단계: 볼보 DTC 코드 정밀 탐색 및 디지털 폰트 보정 필터
+        let detectedDtc = extractAndCorrectDtc(rawText);
 
-        if (match && match[1]) {
-          const detectedDtc = match[1];
+        if (detectedDtc) {
           document.getElementById('searchInput').value = detectedDtc;
           document.getElementById('clearBtn').style.display = 'block';
           filterResults(detectedDtc.toLowerCase());
           alert(`✅ 계기판 고장 코드 [${detectedDtc}] 자동 인식 성공!`);
         } else {
-          alert("⚠️ 사진에서 고장 코드를 인식하지 못했습니다.\n계기판의 DTC 영문/숫자가 선명하게 보이도록 다시 촬영해 주세요.");
+          alert("⚠️ 사진에서 고장 코드를 인식하지 못했습니다.\n계기판의 '오류 코드: Pxxxxxx' 부분이 선명하게 나오도록 가까이서 다시 촬영해 주세요.");
         }
       } catch (err) {
         console.error(err);
@@ -361,6 +362,92 @@
         modal.style.display = 'none';
         document.getElementById('cameraFileInput').value = '';
       }
+    }
+
+    // Canvas 기반 계기판 LCD 흑백 반전 & 고대비 필터
+    function preprocessLcdImage(file) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 1400;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+            else { w = Math.round((w * maxDim) / h); h = maxDim; }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+
+          const imgData = ctx.getImageData(0, 0, w, h);
+          const d = imgData.data;
+
+          // 흑백 그레이스케일 + 색상 반전 + 고대비 이진화
+          for (let i = 0; i < d.length; i += 4) {
+            const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+            // 어두운 LCD 배경(gray < 110)은 흰색(255)으로, 밝은 텍스트(gray >= 110)는 검은색(0)으로 반전
+            const val = gray > 105 ? 0 : 255;
+            d[i] = val;
+            d[i + 1] = val;
+            d[i + 2] = val;
+          }
+
+          ctx.putImageData(imgData, 0, 0);
+          canvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.95);
+        };
+        img.src = URL.createObjectURL(file);
+      });
+    }
+
+    // 볼보 DTC 패턴 매칭 및 LCD 폰트 오인식 보정 알고리즘
+    function extractAndCorrectDtc(text) {
+      // 1. 정상 표준 DTC 패턴 직접 검사 (예: P204713, P245700, U300001 등)
+      const directMatch = text.match(/([PUB C][0-9A-Z]{5,7})/);
+      if (directMatch) {
+        let code = directMatch[1].replace(/\s+/g, '');
+        // P/U/B/C 뒤의 6자리가 숫자로 교정 가능한지 점검
+        return fixCommonOcrDigits(code);
+      }
+
+      // 2. 단어 단위로 쪼개어 LCD 폰트 왜곡 복원 검사
+      const words = text.split(/[\s:\n]+/);
+      for (let word of words) {
+        // 예: BREOTGT, P2047I3, P2O4713 등 6~8자리 단어 분석
+        if (word.length >= 6 && word.length <= 8) {
+          let fixed = word
+            .replace(/^BR/, 'P')
+            .replace(/^B(?=[0-9])/, 'P')
+            .replace(/^R(?=[0-9])/, 'P');
+          
+          if (fixed.startsWith('P') || fixed.startsWith('U') || fixed.startsWith('B') || fixed.startsWith('C')) {
+            const corrected = fixCommonOcrDigits(fixed);
+            if (/^[PUBC][0-9A-Z]{6}$/.test(corrected)) {
+              return corrected;
+            }
+          }
+        }
+      }
+
+      return null;
+    }
+
+    // LCD 디지털 폰트 숫자 오인식 교정 (O->0, I/l->1, Z->2, S->5, G->7, B->8)
+    function fixCommonOcrDigits(str) {
+      const prefix = str[0];
+      let body = str.slice(1);
+      body = body
+        .replace(/O/g, '0')
+        .replace(/I|L|T/g, (m, offset) => (offset === body.length - 1 && m === 'T' ? '3' : '1')) // 13->T 보정
+        .replace(/Z/g, '2')
+        .replace(/E/g, '2')
+        .replace(/S/g, '5')
+        .replace(/G/g, '7')
+        .replace(/B/g, '8');
+      return prefix + body;
     }
 
     window.onload = () => {
