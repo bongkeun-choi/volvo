@@ -46,7 +46,7 @@
 
     body { background: var(--app-bg); color: #000; padding-bottom: 60px; transition: background 0.25s ease; }
 
-    /* 상단 헤더 바 */
+    /* 상단 헤더 */
     .app-header {
       position: sticky; top: 0; z-index: 1000;
       background: var(--app-header-bg); color: var(--app-header-text);
@@ -118,11 +118,50 @@
     .chips-container::-webkit-scrollbar { display: none; }
     .chip { background: var(--chip-bg); color: var(--chip-text); padding: 6px 13px; border-radius: 16px; font-size: 12.5px; font-weight: 800; white-space: nowrap; cursor: pointer; }
 
+    /* ========================================================
+       ✨ 다중 사양 / 일련번호 선택 필터 바 (Sub-Selector)
+    ======================================================== */
+    .variant-selector-wrap {
+      background: #ffffff; border: 1.5px solid #0284c7; border-radius: 12px;
+      padding: 12px; margin-bottom: 14px; box-shadow: 0 3px 10px rgba(2, 132, 199, 0.1);
+      display: none;
+    }
+    body.theme-dark .variant-selector-wrap {
+      background: #1e293b; border-color: #38bdf8; box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+    }
+    .variant-header {
+      font-size: 13px; font-weight: 800; color: #0284c7; margin-bottom: 8px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    body.theme-dark .variant-header { color: #38bdf8; }
+    .variant-pills {
+      display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none;
+    }
+    .variant-pills::-webkit-scrollbar { display: none; }
+    
+    .variant-pill {
+      background: #f1f5f9; color: #334155; border: 1.5px solid #cbd5e1;
+      padding: 8px 14px; border-radius: 20px; font-size: 12.5px; font-weight: 800;
+      white-space: nowrap; cursor: pointer; transition: all 0.2s;
+    }
+    .variant-pill:hover { background: #e0f2fe; border-color: #0284c7; }
+    .variant-pill.active {
+      background: #0284c7; color: white; border-color: #0284c7;
+      box-shadow: 0 2px 6px rgba(2, 132, 199, 0.35);
+    }
+    body.theme-dark .variant-pill {
+      background: #0f172a; color: #cbd5e1; border-color: #334155;
+    }
+    body.theme-dark .variant-pill.active {
+      background: #38bdf8; color: #0f172a; border-color: #38bdf8;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+    }
+
     .status-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; font-size: 12px; color: var(--status-text); font-weight: 700; }
     .empty-state { text-align: center; padding: 60px 20px; color: #64748b; font-weight: 700; font-size: 14.5px; line-height: 1.6; }
 
     /* [모드 1] 정통 매뉴얼 */
-    .mode-oem-sheet { background: #ffffff; padding: 30px 25px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); border: 1px solid #94a3b8; color: #000; }
+    .mode-oem-sheet { background: #ffffff; padding: 30px 25px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); border: 1px solid #94a3b8; color: #000; margin-bottom: 20px; }
     .oem-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 12px; }
     .oem-logo { font-size: 22px; font-weight: 900; letter-spacing: 7px; color: #000; font-family: serif; }
     .oem-doc-title { font-size: 16px; font-weight: 800; color: #000; }
@@ -136,10 +175,10 @@
     .oem-stamp-box { display: inline-block; border: 1px solid #999; color: #777; padding: 3px 8px; border-radius: 4px; font-size: 11px; }
 
     /* [모드 2] 모던 카드 */
-    .mode-card-wrap { display: flex; flex-direction: column; gap: 12px; }
+    .mode-card-wrap { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
     .m-card { background: #ffffff; border-radius: 12px; padding: 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
     .m-hero { border-left: 5px solid #0284c7; }
-    .m-badge-group { display: flex; gap: 6px; margin-bottom: 8px; }
+    .m-badge-group { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
     .m-badge { padding: 3px 8px; border-radius: 5px; font-size: 11px; font-weight: 800; }
     .m-badge-red { background: #fee2e2; color: #dc2626; }
     .m-badge-blue { background: #e0f2fe; color: #0284c7; }
@@ -155,7 +194,7 @@
     .m-dtc-pill { background: #e0f2fe; color: #0284c7; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 800; text-decoration: none; cursor: pointer; border: 1px solid #bae6fd; }
 
     /* [모드 3] 현장 다크 */
-    .mode-dark-wrap { display: flex; flex-direction: column; gap: 12px; color: #f3f4f6; }
+    .mode-dark-wrap { display: flex; flex-direction: column; gap: 12px; color: #f3f4f6; margin-bottom: 20px; }
     .d-card { background: #1e293b; border-radius: 12px; padding: 18px; border: 1px solid #334155; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
     .d-hero { border: 1.5px solid #ef4444; background: linear-gradient(180deg, #1e293b 0%, #172033 100%); }
     .d-tag { font-size: 10.5px; font-weight: 900; color: #ef4444; letter-spacing: 1px; margin-bottom: 4px; }
@@ -182,7 +221,7 @@
       <span>볼보에러</span>
     </div>
     <div class="header-btns">
-      <a href="parser.html" class="btn-nav-parser">📂 PDF 분석</a>
+      <a href="parser.html" class="btn-nav-parser">📂 캡처/문서 분석</a>
       <button id="btnInstallApp" class="btn-install" onclick="triggerInstallPrompt()">📲 앱 설치</button>
       <button class="btn-refresh" onclick="fetchData()">새로고침</button>
     </div>
@@ -198,13 +237,22 @@
 
     <!-- 검색창 -->
     <div class="search-wrapper">
-      <input type="text" id="searchInput" class="search-input" placeholder="조회할 DTC 에러코드(예: P204713, P245700) 입력..." autocomplete="off" oninput="onSearchInput()" onfocus="onSearchInput()">
+      <input type="text" id="searchInput" class="search-input" placeholder="조회할 DTC 에러코드(예: P206A13, P245700) 입력..." autocomplete="off" oninput="onSearchInput()" onfocus="onSearchInput()">
       <button id="clearBtn" class="clear-btn" onclick="clearSearch()">×</button>
       <div id="autocompleteList" class="autocomplete-dropdown"></div>
     </div>
 
     <!-- 바로가기 칩 -->
     <div class="chips-container" id="quickChips"></div>
+
+    <!-- 다중 사양 / 일련번호 선택 바 -->
+    <div class="variant-selector-wrap" id="variantSelectorWrap">
+      <div class="variant-header">
+        <span>📋 해당 고장 코드의 등록 사양 (<span id="variantCount">0</span>개 발견)</span>
+        <span style="font-size:11.5px; font-weight:normal; opacity:0.8;">원하는 사양을 터치하세요</span>
+      </div>
+      <div class="variant-pills" id="variantPills"></div>
+    </div>
 
     <div class="status-bar">
       <span id="dataCount">DB 연결 중...</span>
@@ -222,15 +270,15 @@
   <script>
     const API_URL = "https://script.google.com/macros/s/AKfycbzV5H2kowUqmGNO2UloeU_2OMYT0ZbyyzsS3iN4LXLhY_WvZ1maxiIOZ9jvvCg99aM/exec";
     let dtcData = [];
+    let currentFiltered = [];
+    let selectedVariantIdx = -1; // -1 = 전체 보기
     let currentMode = localStorage.getItem('volvo_viewer_mode') || 'oem';
     let deferredPrompt = null;
 
-    // 1. Service Worker 등록
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
     }
 
-    // 2. 브라우저 정식 설치 프롬프트 캡처
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredPrompt = e;
@@ -281,9 +329,8 @@
       const modeNames = { oem: '정통 매뉴얼', card: '모던 카드 대시보드', dark: '현장 특화 다크모드' };
       document.getElementById('currentModeLabel').innerText = `모드: ${modeNames[mode]}`;
 
-      if (shouldRerender) {
-        const q = document.getElementById('searchInput').value.trim();
-        if (q) filterResults(q.toLowerCase());
+      if (shouldRerender && currentFiltered.length > 0) {
+        renderCurrentView();
       }
     }
 
@@ -323,6 +370,7 @@
       if (!q) {
         closeAutocomplete();
         showInitialEmptyState();
+        document.getElementById('variantSelectorWrap').style.display = 'none';
         document.getElementById('dataCount').innerText = `총 ${dtcData.length}건 등록됨`;
         return;
       }
@@ -335,7 +383,7 @@
       if (matches.length > 0) {
         acList.innerHTML = matches.map(item => `
           <div class="autocomplete-item" onclick="selectKeyword('${item.dtc}')">
-            ${item.dtc} <span style="font-size:12px; color:#64748b; font-weight:normal;">(${item.compFull || item.modelType || ''})</span>
+            ${item.dtc} <span style="font-size:12px; color:#64748b; font-weight:normal;">(${item.modelType || ''} ${item.factory ? '['+item.factory+']' : ''})</span>
           </div>
         `).join('');
         acList.style.display = 'block';
@@ -357,17 +405,84 @@
       document.getElementById('autocompleteList').style.display = 'none';
     }
 
+    // 검색 필터링 & 다중 사양 선택 바 생성
     function filterResults(q) {
-      const filtered = dtcData.filter(item => {
+      currentFiltered = dtcData.filter(item => {
         return Object.values(item).some(val => String(val).toLowerCase().includes(q));
       });
-      renderCards(filtered);
-      document.getElementById('dataCount').innerText = `검색 결과: ${filtered.length}건`;
+
+      selectedVariantIdx = -1; // 검색 변경 시 전체 보기로 초기화
+
+      const selectorWrap = document.getElementById('variantSelectorWrap');
+      const pillsContainer = document.getElementById('variantPills');
+
+      if (currentFiltered.length > 1) {
+        document.getElementById('variantCount').innerText = currentFiltered.length;
+        
+        let pillsHtml = `
+          <button class="variant-pill active" id="vPill_all" onclick="onSelectVariant(-1)">
+            📌 전체 사양 보기 (${currentFiltered.length}건)
+          </button>
+        `;
+
+        currentFiltered.forEach((d, idx) => {
+          const model = d.modelType || '기종미상';
+          let serialInfo = '';
+          if (d.factory || d.serialStart || d.serialEnd) {
+            serialInfo = ` [${d.factory || '-'} ${d.serialStart || '시작'}~${d.serialEnd || '종료'}]`;
+          }
+          pillsHtml += `
+            <button class="variant-pill" id="vPill_${idx}" onclick="onSelectVariant(${idx})">
+              🚜 ${idx + 1}. ${model}${serialInfo}
+            </button>
+          `;
+        });
+
+        pillsContainer.innerHTML = pillsHtml;
+        selectorWrap.style.display = 'block';
+      } else {
+        selectorWrap.style.display = 'none';
+      }
+
+      renderCurrentView();
+      document.getElementById('dataCount').innerText = `검색 결과: ${currentFiltered.length}건`;
+    }
+
+    function onSelectVariant(idx) {
+      selectedVariantIdx = idx;
+
+      // 탭 활성 상태 변경
+      const allPills = document.querySelectorAll('.variant-pill');
+      allPills.forEach(p => p.classList.remove('active'));
+
+      if (idx === -1) {
+        document.getElementById('vPill_all')?.classList.add('active');
+      } else {
+        document.getElementById(`vPill_${idx}`)?.classList.add('active');
+      }
+
+      renderCurrentView();
+    }
+
+    function renderCurrentView() {
+      if (currentFiltered.length === 0) {
+        document.getElementById('resultsList').innerHTML = '<div class="empty-state">일치하는 진단서가 없습니다. 🔍</div>';
+        return;
+      }
+
+      // 특정 사양이 선택되었으면 1건만, 아니면 전체 렌더링
+      const itemsToRender = (selectedVariantIdx === -1) 
+        ? currentFiltered 
+        : [currentFiltered[selectedVariantIdx]];
+
+      renderCards(itemsToRender);
     }
 
     function clearSearch() {
       document.getElementById('searchInput').value = '';
       document.getElementById('clearBtn').style.display = 'none';
+      document.getElementById('variantSelectorWrap').style.display = 'none';
+      currentFiltered = [];
       closeAutocomplete();
       showInitialEmptyState();
       document.getElementById('dataCount').innerText = `총 ${dtcData.length}건 등록됨`;
@@ -390,25 +505,20 @@
       const resultsList = document.getElementById('resultsList');
       resultsList.innerHTML = '';
 
-      if (items.length === 0) {
-        resultsList.innerHTML = '<div class="empty-state">일치하는 진단서가 없습니다. 🔍</div>';
-        return;
-      }
-
-      items.forEach(d => {
+      items.forEach((d, idx) => {
         const card = document.createElement('div');
         if (currentMode === 'oem') {
-          card.innerHTML = renderOemStyle(d);
+          card.innerHTML = renderOemStyle(d, idx);
         } else if (currentMode === 'card') {
-          card.innerHTML = renderCardStyle(d);
+          card.innerHTML = renderCardStyle(d, idx);
         } else if (currentMode === 'dark') {
-          card.innerHTML = renderDarkStyle(d);
+          card.innerHTML = renderDarkStyle(d, idx);
         }
         resultsList.appendChild(card);
       });
     }
 
-    function renderOemStyle(d) {
+    function renderOemStyle(d, idx) {
       const renderBullets = (arr) => {
         if (!arr || arr.length === 0) return `<div class="oem-bullet-row"><span>○</span><span>없음</span></div>`;
         return arr.map(t => `<div class="oem-bullet-row"><span>○</span><span>${t}</span></div>`).join('');
@@ -427,7 +537,7 @@
           </div>
           <table class="oem-tbl">
             <tr>
-              <td style="width: 22%;"><b>일자:</b><br>2026-08-16</td>
+              <td style="width: 22%;"><b>일자:</b><br>2026-08-17</td>
               <td style="width: 28%;"><b>정보 유형:</b><br>진단 오류 코드</td>
               <td style="width: 50%;"><b>프로필:</b><br><b>${d.modelType || 'EW140E Volvo'}</b></td>
             </tr>
@@ -470,12 +580,12 @@
       `;
     }
 
-    function renderCardStyle(d) {
+    function renderCardStyle(d, idx) {
       const renderSteps = (arr) => {
         if (!arr || arr.length === 0) return '<div style="font-size:13px; color:#64748b;">점검 내용 없음</div>';
-        return arr.map((t, idx) => `
+        return arr.map((t, i) => `
           <div class="m-step-item">
-            <div class="m-step-num">${idx + 1}</div>
+            <div class="m-step-num">${i + 1}</div>
             <div class="m-step-txt">${t}</div>
           </div>
         `).join('');
@@ -486,6 +596,11 @@
         return list.map(c => `<span class="m-dtc-pill" onclick="selectKeyword('${c}')">☍ ${c}</span>`).join('');
       };
 
+      let serialBadge = '';
+      if (d.factory || d.serialStart || d.serialEnd) {
+        serialBadge = `<span class="m-badge" style="background:#fef3c7; color:#92400e;">📍 ${d.factory || ''} #${d.serialStart || ''}~${d.serialEnd || ''}</span>`;
+      }
+
       return `
         <div class="mode-card-wrap">
           <div class="m-card m-hero">
@@ -493,6 +608,7 @@
               <span class="m-badge m-badge-red">고장코드</span>
               <span class="m-badge m-badge-blue">${d.ecu || '제어기'}</span>
               <span class="m-badge" style="background:#f1f5f9; color:#475569;">${d.modelType || 'Volvo'}</span>
+              ${serialBadge}
             </div>
             <div class="m-hero-dtc">${d.dtc}</div>
             <div class="m-hero-desc">${d.compFull || ''}</div>
@@ -519,7 +635,7 @@
       `;
     }
 
-    function renderDarkStyle(d) {
+    function renderDarkStyle(d, idx) {
       const renderDarkChecks = (arr) => {
         if (!arr || arr.length === 0) return '<div style="font-size:13px; color:#64748b;">수칙 없음</div>';
         return arr.map(t => `
@@ -535,12 +651,17 @@
         return list.map(c => `<span class="d-neon-pill" onclick="selectKeyword('${c}')">🔗 ${c}</span>`).join('');
       };
 
+      let serialTag = '';
+      if (d.factory || d.serialStart || d.serialEnd) {
+        serialTag = ` &nbsp;|&nbsp; <span style="color:#fbbf24;">[${d.factory || ''} #${d.serialStart || ''}~${d.serialEnd || ''}]</span>`;
+      }
+
       return `
         <div class="mode-dark-wrap">
           <div class="d-card d-hero">
             <div class="d-tag">CRITICAL FAULT CODE</div>
             <div class="d-dtc-code">${d.dtc}</div>
-            <div class="d-ecu-name">${d.ecu || '제어기'} &nbsp;|&nbsp; ${d.modelType || 'Volvo'}</div>
+            <div class="d-ecu-name">${d.ecu || '제어기'} &nbsp;|&nbsp; ${d.modelType || 'Volvo'}${serialTag}</div>
             <div class="d-comp-desc">${d.compFull || ''}</div>
           </div>
           <div class="d-card">
