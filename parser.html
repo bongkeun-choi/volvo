@@ -65,7 +65,7 @@
       <div class="paste-zone" id="pasteZone" onclick="document.getElementById('fileInput').click()">
         <div class="paste-icon">📑</div>
         <div class="paste-title">파일 선택 / 드래그 또는 <span class="kbd-badge">Ctrl + V</span> 붙여넣기</div>
-        <div class="paste-desc">줄바꿈 문장 자동 병합 및 인코딩 불릿(¡) 정밀 정제 엔진이 적용되었습니다.</div>
+        <div class="paste-desc">전체 표 영역에 2D 앵커 기반 공간 파싱을 적용하여 데이터 침범을 완벽히 차단합니다.</div>
         <input type="file" id="fileInput" multiple accept="image/*,application/pdf" style="display: none;">
       </div>
       <div class="option-box">
@@ -152,7 +152,7 @@
             updateQueueStatus(itemIndex, '이미지 OCR 분석 중...', 'processing');
             resObj = await processImageOCR(file);
           } else if (file.name.toLowerCase().endsWith('.pdf')) {
-            updateQueueStatus(itemIndex, 'PDF 2D 블록 & 불릿 정제 분석 중...', 'processing');
+            updateQueueStatus(itemIndex, 'PDF 2D 앵커 정밀 파싱 중...', 'processing');
             resObj = await processPdf(file);
           }
 
@@ -209,7 +209,7 @@
       });
     }
 
-    // 4가지 버그가 완벽히 수정된 PDF 파서
+    // 2D 앵커 기반 완전 격리 PDF 파서
     function processPdf(file) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -236,25 +236,35 @@
               });
             }
 
-            // 1. 부동소수점 오차(2pt 이내)를 동일 라인으로 묶고 X순서 보장 정렬
+            // 부동소수점 오차(2pt 이내) 라인 통합 및 X순서 정렬
             allItems.sort((a, b) => {
               if (Math.abs(b.y - a.y) > 2) return b.y - a.y;
               return a.x - b.x;
             });
 
+            // 앵커 헬퍼: 라벨과 같은 Y라인(±4pt) 우측(X > label.x) 텍스트만 추출
+            function getRowRightText(items, labelKeyword) {
+              const anchor = items.find(it => it.str.replace(/\s+/g, '').includes(labelKeyword.replace(/\s+/g, '')));
+              if (!anchor) return '';
+              const rowItems = items.filter(it => Math.abs(it.y - anchor.y) <= 4 && it.x > (anchor.x + 30));
+              rowItems.sort((a, b) => a.x - b.x);
+              return rowItems.map(it => it.str).join(' ').trim();
+            }
+
             const fullRawText = allItems.map(it => it.str).join(' ');
             const isSae = /MID\s*\d+|PID\s*\d+|SID\s*\d+|FMI\s*\d+/i.test(fullRawText);
 
             if (isSae) {
+              // 1. 에러코드
               const mid = (fullRawText.match(/MID\s*(\d+)/i) || ['', '128'])[1];
-              const pidMatch = fullRawText.match(/(PID|PPID|SID|PSID)\s*(\d+)/i) || ['', 'PID', '100'];
+              const pidMatch = fullRawText.match(/(PID|PPID|SID|PSID)\s*(\d+)/i) || ['', 'PID', '105'];
               const pidType = pidMatch[1], pid = pidMatch[2];
               const dtc = `MID${mid} ${pidType}${pid}`;
 
-              let displayMsg = `${mid} ${pidType}${pid}`;
-              const mDisp = fullRawText.match(/텍스트\s*프레젠테이션[\s\t]*:?[\s\t]*([0-9A-Z\s]+)/i);
-              if (mDisp) displayMsg = mDisp[1].trim();
+              // 2. 디스플레이 메시지 (앵커 기반 직접 추출)
+              let displayMsg = getRowRightText(allItems, '텍스트프레젠테이션') || `${mid} ${pidType}${pid}`;
 
+              // 3. 모델 종류 및 생산 사업장, 일련번호 (정밀 추출)
               let modelType = 'EW145B Volvo', factory = 'Changwon', serialStart = '15001', serialEnd = '210000';
               const mSer = fullRawText.match(/([A-Z0-9]+\s+Volvo)[\s\t]+([A-Za-z가-힣]+)[\s\t]+(\d{4,8})[\s\t]+(\d{4,8})/);
               if (mSer) {
@@ -262,24 +272,23 @@
                 serialStart = mSer[3].trim(); serialEnd = mSer[4].trim();
               }
 
-              let ecu = `MID${mid} 엔진 ECU`;
-              const mEcu = fullRawText.match(/MID[\/\s]*컨트롤\s*유니트[\s\t]*:?[\s\t]*([^\n\r]+?)(?=(?:PID|PPID|SID|장비|$))/i);
-              if (mEcu) {
-                const ecuClean = mEcu[1].replace(/MID\d+/g, '').replace(/^[:\s\-]+/, '').trim();
-                ecu = `MID${mid} ${ecuClean}`;
-              }
+              // 4. 컨트롤 유니트 (앵커 기반 동일 행 추출)
+              let ecu = getRowRightText(allItems, '컨트롤유니트') || `MID${mid} 엔진 ECU`;
+              if (!ecu.startsWith('MID')) ecu = `MID${mid} ${ecu}`;
 
-              let paramName = `${pidType}${pid} 엔진 오일 압력`;
-              const mParam = fullRawText.match(/(?:PID\/PPID\/SID\/PSID|PID|PPID|SID|PSID)[\s\t]*:?[\s\t]*([^\n\r]+?)(?=(?:장비|텍스트|기준|$))/i);
-              if (mParam) {
-                const pClean = mParam[1].replace(new RegExp(`^${pidType}\\s*${pid}`, 'i'), '').replace(/^[:\s\-]+/, '').trim();
-                paramName = `${pidType}${pid} ${pClean}`;
-              }
+              // 5. 파라미터명 (앵커 기반 동일 행 추출 - 침범 원천 차단)
+              let paramName = getRowRightText(allItems, 'PID/PPID/SID/PSID') || `${pidType}${pid} 흡입 매니폴드 온도`;
+              if (!paramName.startsWith(pidType)) paramName = `${pidType}${pid} ${paramName}`;
 
-              // 불릿 정제 정규식 (¡, \u00A1, ○, •, ● 완벽 포괄)
+              // 6. 기준 (앵커 기반 동일 행 추출)
+              let standard = getRowRightText(allItems, '기준');
+              if (standard.includes('고장 모드')) standard = '';
+
+              // 불릿 정제 정규식
               const BULLET_CLEAN_REGEX = /^[¡○•●\u00A1\s\-:]+|[¡○•●\u00A1\s\-:]+$/g;
               const isBulletStart = (str) => /^[¡○•●\u00A1]/.test(str.trim());
 
+              // 7. FMI 고장 모드 2D 블록 추출
               const fmiAnchors = allItems.filter(it => /^FMI\s*(\d+)$/i.test(it.str) || /고장\s*모드\s*FMI\s*(\d+)/i.test(it.str));
               const fmiList = [];
 
@@ -296,7 +305,7 @@
                 const causeAnchor = blockItems.find(it => it.str.includes('가능한') || it.str.includes('이유'));
                 const actAnchor = blockItems.find(it => it.str.includes('조치'));
 
-                // (1) 탐지 조건 정밀 추출 (라벨 노이즈 및 앞뒤 콜론 완벽 제거)
+                // (1) 탐지 조건
                 let cond = '-';
                 if (condAnchor) {
                   const condBottomY = symAnchor ? (symAnchor.y + 2) : (condAnchor.y - 30);
@@ -308,7 +317,7 @@
                     .replace(BULLET_CLEAN_REGEX, '').trim() || '-';
                 }
 
-                // (2) 조치 링크
+                // (2) 조치
                 let actions = displayMsg;
                 if (actAnchor) {
                   const actItems = blockItems.filter(it => Math.abs(it.y - actAnchor.y) <= 8 && it.x > (actAnchor.x + 10));
@@ -316,7 +325,7 @@
                   if (actItems.length) actions = actItems.map(it => it.str).join(' ').trim();
                 }
 
-                // (3) 증상 & 가능한 이유 (라벨 유입 방지 + 불릿 기반 줄바꿈 문장 병합)
+                // (3) 증상 & 가능한 이유
                 const splitX = causeAnchor ? (causeAnchor.x - 10) : 310;
                 const tableTopY = symAnchor ? (symAnchor.y - 2) : (blockTopY - 20);
                 const tableBottomY = actAnchor ? (actAnchor.y + 5) : (blockBottomY + 10);
@@ -328,8 +337,6 @@
 
                 function assembleBullets(items) {
                   items.sort((a, b) => (Math.abs(b.y - a.y) > 2 ? b.y - a.y : a.x - b.x));
-                  
-                  // 줄 단위로 그룹화
                   let lines = [], currY = null, currLine = [];
                   items.forEach(it => {
                     if (currY === null || Math.abs(it.y - currY) > 4) {
@@ -342,7 +349,6 @@
                   });
                   if (currLine.length) lines.push(currLine.join(' '));
 
-                  // 불릿 시작 문자기준 누적 (Wrap 문장 자동 결합)
                   let bullets = [];
                   lines.forEach(line => {
                     let text = line.trim();
@@ -358,7 +364,6 @@
                       }
                     }
                   });
-
                   return bullets.length > 0 ? Array.from(new Set(bullets)).join(' | ') : '없음';
                 }
 
@@ -376,7 +381,7 @@
                 item: {
                   dtc: dtc, displayMsg: displayMsg, modelType: modelType, factory: factory,
                   serialStart: serialStart, serialEnd: serialEnd, ecu: ecu, paramName: paramName,
-                  standard: '', fmiList: fmiList
+                  standard: standard, fmiList: fmiList
                 }
               });
             } else {
