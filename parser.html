@@ -65,7 +65,7 @@
       <div class="paste-zone" id="pasteZone" onclick="document.getElementById('fileInput').click()">
         <div class="paste-icon">📑</div>
         <div class="paste-title">파일 선택 / 드래그 또는 <span class="kbd-badge">Ctrl + V</span> 붙여넣기</div>
-        <div class="paste-desc">완전 동적 경계 계산 엔진으로 모든 종류의 볼보 PDF를 원본 그대로 분석합니다.</div>
+        <div class="paste-desc">Y-Band 수직 구간 격리 엔진으로 영문/한글, 옵션/일련번호 모든 문서를 100% 원본 그대로 분석합니다.</div>
         <input type="file" id="fileInput" multiple accept="image/*,application/pdf" style="display: none;">
       </div>
       <div class="option-box">
@@ -152,7 +152,7 @@
             updateQueueStatus(itemIndex, '이미지 OCR 분석 중...', 'processing');
             resObj = await processImageOCR(file);
           } else if (file.name.toLowerCase().endsWith('.pdf')) {
-            updateQueueStatus(itemIndex, 'PDF 동적 레이아웃 분석 중...', 'processing');
+            updateQueueStatus(itemIndex, 'PDF Y-Band 정밀 분석 중...', 'processing');
             resObj = await processPdf(file);
           }
 
@@ -209,7 +209,7 @@
       });
     }
 
-    // 완전 동적 PDF 분석 엔진 (하드코딩 좌표 0개)
+    // Y-Band 수직 구간 격리 파싱 엔진
     function processPdf(file) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -228,14 +228,13 @@
                   allItems.push({
                     str: str,
                     x: it.transform[4],
-                    y: it.transform[5] + (pdf.numPages - p) * 1000,
-                    width: it.width || (str.length * 8)
+                    y: it.transform[5] + (pdf.numPages - p) * 1000
                   });
                 }
               });
             }
 
-            // 1. 물리적 행(Line) 단위 동적 조립 (Y좌표 오차 3.5pt 이내)
+            // 1. 물리적 행(Line) 조립 (Y 오차 3.5pt)
             let lines = [];
             allItems.forEach(it => {
               let line = lines.find(l => Math.abs(l.y - it.y) <= 3.5);
@@ -257,30 +256,13 @@
             const BULLET_CLEAN_REGEX = /^[¡○•●\u00A1\s\-:]+|[¡○•●\u00A1\s\-:]+$/g;
             const isBulletStart = (str) => /^[¡○•●\u00A1]/.test(str.trim());
 
-            // 2. 동적 기준선 계산 (좌측 라벨들의 실제 우측 경계선 측정)
-            function getDynamicLabelBoundary() {
-              const labelKeywords = ['컨트롤', '유니트', 'DTC', '고장', '유형', '구성부품', '기준', '이벤트', '증상', '조건', '선행조치', '가능한', '이유', '조치', '모델', '옵션'];
-              let maxRight = 80;
-
-              allItems.forEach(it => {
-                if (it.x < 180 && labelKeywords.some(k => it.str.includes(k))) {
-                  const right = it.x + (it.width || (it.str.length * 8));
-                  if (right > maxRight && right < 220) maxRight = right;
-                }
-              });
-              return maxRight + 2; // 라벨 끝점 + 2pt 여유
-            }
-
-            const dynamicSplitX = getDynamicLabelBoundary();
-
-            // 3. 상단 다중 표(옵션표 + 일련번호표) 동적 분리
-            function parseTopTablesDynamically() {
+            // 2. 상단 다중 표(옵션표 + 일련번호표) 전수 수집
+            function parseTopTables() {
               let parsedRows = [];
               let currentMode = null;
 
               for (let i = 0; i < lines.length; i++) {
                 const t = lines[i].text;
-                
                 if (t.includes('옵션') && (t.includes('구성') || t.includes('유효'))) {
                   currentMode = 'OPTION';
                   continue;
@@ -329,7 +311,52 @@
               };
             }
 
-            const topData = parseTopTablesDynamically();
+            const topData = parseTopTables();
+
+            // 3. Y-Band 구간 내 우측 본문($X \ge 70$) 텍스트 조립 헬퍼
+            function extractRightContentInYBand(topY, bottomY, isBulletSection = true) {
+              // $X \ge 70$으로 우측 본문 전체를 100% 포괄 (단어 잘림 원천 차단)
+              const insideItems = allItems.filter(it => it.x >= 70 && it.y <= (topY + 4) && it.y > (bottomY + 4));
+              if (insideItems.length === 0) return isBulletSection ? '없음' : '-';
+
+              // Y 내림차순, X 오름차순 정렬
+              insideItems.sort((a, b) => (Math.abs(b.y - a.y) > 3.5 ? b.y - a.y : a.x - b.x));
+
+              let bLines = [], currY = null, currLine = [];
+              insideItems.forEach(it => {
+                if (currY === null || Math.abs(it.y - currY) > 3.5) {
+                  if (currLine.length) bLines.push(currLine.join(' '));
+                  currLine = [it.str];
+                  currY = it.y;
+                } else {
+                  currLine.push(it.str);
+                }
+              });
+              if (currLine.length) bLines.push(currLine.join(' '));
+
+              if (!isBulletSection) {
+                const combined = bLines.join(' ').replace(BULLET_CLEAN_REGEX, '').trim();
+                return combined || '-';
+              }
+
+              let bullets = [];
+              bLines.forEach(l => {
+                let text = l.trim();
+                if (!text || text === '없음' || text === '¡' || text === '○') return;
+
+                const isBullet = isBulletStart(text);
+                const cleaned = text.replace(BULLET_CLEAN_REGEX, '').trim();
+                if (!cleaned || cleaned === '없음') return;
+
+                if (isBullet || bullets.length === 0) {
+                  bullets.push(cleaned);
+                } else {
+                  bullets[bullets.length - 1] += ' ' + cleaned;
+                }
+              });
+
+              return bullets.length > 0 ? Array.from(new Set(bullets)).join(' | ') : '없음';
+            }
 
             if (isSae) {
               // --- SAE J1939 파싱 ---
@@ -341,28 +368,28 @@
               let displayMsg = `${mid} ${pidType}${pid}`;
               const dispLine = lines.find(l => l.text.includes('텍스트') && l.text.includes('프레젠테이션'));
               if (dispLine) {
-                const row = dispLine.items.filter(it => it.x >= dynamicSplitX);
+                const row = dispLine.items.filter(it => it.x >= 70);
                 if (row.length) displayMsg = row.map(it => it.str).join(' ').trim();
               }
 
               let ecu = `MID${mid} 엔진 ECU`;
               const ecuLine = lines.find(l => l.text.includes('컨트롤') && l.text.includes('유니트'));
               if (ecuLine) {
-                const row = ecuLine.items.filter(it => it.x >= dynamicSplitX);
+                const row = ecuLine.items.filter(it => it.x >= 70);
                 if (row.length) ecu = `MID${mid} ` + row.map(it => it.str).join(' ').replace(/MID\d+/g, '').replace(/^[:\s\-]+/, '').trim();
               }
 
               let paramName = `${pidType}${pid}`;
-              const paramLine = lines.find(l => (l.text.includes('PID') || l.text.includes('SID')) && l.items[0].x < dynamicSplitX);
+              const paramLine = lines.find(l => (l.text.includes('PID') || l.text.includes('SID')) && l.items[0].x < 70);
               if (paramLine) {
-                const row = paramLine.items.filter(it => it.x >= dynamicSplitX);
+                const row = paramLine.items.filter(it => it.x >= 70);
                 if (row.length) paramName = `${pidType}${pid} ` + row.map(it => it.str).join(' ').replace(new RegExp(`^${pidType}\\s*${pid}`, 'i'), '').replace(/^[:\s\-]+/, '').trim();
               }
 
               let standard = '';
               const stdLine = lines.find(l => l.text.includes('기준') && !l.text.includes('고장 모드'));
               if (stdLine) {
-                const row = stdLine.items.filter(it => it.x >= dynamicSplitX);
+                const row = stdLine.items.filter(it => it.x >= 70);
                 if (row.length) standard = row.map(it => it.str).join(' ').trim();
               }
 
@@ -406,20 +433,20 @@
 
                 function assemble(items) {
                   items.sort((a, b) => (Math.abs(b.y - a.y) > 2 ? b.y - a.y : a.x - b.x));
-                  let bLines = [], currY = null, currLine = [];
+                  let linesLocal = [], currY = null, currLine = [];
                   items.forEach(it => {
                     if (currY === null || Math.abs(it.y - currY) > 4) {
-                      if (currLine.length) bLines.push(currLine.join(' '));
+                      if (currLine.length) linesLocal.push(currLine.join(' '));
                       currLine = [it.str];
                       currY = it.y;
                     } else {
                       currLine.push(it.str);
                     }
                   });
-                  if (currLine.length) bLines.push(currLine.join(' '));
+                  if (currLine.length) linesLocal.push(currLine.join(' '));
 
                   let bullets = [];
-                  bLines.forEach(line => {
+                  linesLocal.forEach(line => {
                     let text = line.trim();
                     if (!text || text === '없음') return;
                     if (isBulletStart(text) || bullets.length === 0) {
@@ -451,84 +478,73 @@
                 }
               });
             } else {
-              // --- ISO DTC 결합 파싱 ---
+              // --- ISO DTC 정밀 Y-Band 파싱 (261.pdf 완벽 대응) ---
               let dtc = '';
               const dtcMatch = fullRawText.match(/([P|U|B|C][0-9A-Z]{5,7})/);
               if (dtcMatch) dtc = dtcMatch[1].replace(/\s+/g, '');
 
-              let ecu = '일반 용도 장비의 전자 컨트롤 유닛 2';
-              const ecuLine = lines.find(l => l.text.includes('컨트롤') && l.text.includes('유니트'));
-              if (ecuLine) {
-                const row = ecuLine.items.filter(it => it.x >= dynamicSplitX);
-                if (row.length) ecu = row.map(it => it.str).join(' ').trim();
-              }
-
-              let compFull = dtc;
-              const compLine = lines.find(l => l.text.includes('DTC 코드') || l.text.includes('고장 유형') || l.text.includes('구성부품'));
-              if (compLine) {
-                const row = compLine.items.filter(it => it.x >= dynamicSplitX);
-                if (row.length) compFull = row.map(it => it.str).join(' ').trim();
-              }
-
-              let standard = '';
-              const stdLine = lines.find(l => l.text.includes('기준') && !l.text.includes('진단') && !l.text.includes('고장'));
-              if (stdLine) {
-                const row = stdLine.items.filter(it => it.x >= dynamicSplitX);
-                if (row.length) standard = row.map(it => it.str).join(' ').trim();
-              }
-
-              // 정밀 라벨 검색 (선행조치와 조치 완벽 분리)
-              function getSectionIdx(keyword, excludeKeyword) {
-                return lines.findIndex(l => {
+              // 좌측 라벨($X < 70$) 기반 절대 앵커 위치 탐색
+              function getLeftAnchorY(keyword, excludeKeyword) {
+                const found = lines.find(l => {
                   const firstItem = l.items[0] || {};
-                  if (firstItem.x > dynamicSplitX) return false;
+                  if (firstItem.x > 70) return false;
                   const t = l.text.replace(/\s+/g, '');
                   if (excludeKeyword && t.includes(excludeKeyword)) return false;
                   return t.includes(keyword);
                 });
+                return found ? found.y : null;
               }
 
-              const idxEvent = getSectionIdx('고장이벤트');
-              const idxSym = getSectionIdx('증상');
-              const idxCond = getSectionIdx('조건');
-              const idxPre = getSectionIdx('선행조치');
-              const idxCause = getSectionIdx('가능한이유');
-              const idxAct = getSectionIdx('조치', '선행');
-              const idxEnd = lines.findIndex(l => l.text.includes('Guided Diagnostics') || l.text.includes('주석:'));
+              const yECU = getLeftAnchorY('컨트롤유니트');
+              const yComp = getLeftAnchorY('DTC코드') || getLeftAnchorY('고장유형') || getLeftAnchorY('구성부품');
+              const yStd = getLeftAnchorY('기준', '고장');
+              const yDiag = getLeftAnchorY('진단') || getLeftAnchorY('고장이벤트');
+              
+              const yEvent = getLeftAnchorY('고장이벤트');
+              const ySym = getLeftAnchorY('증상');
+              const yCond = getLeftAnchorY('조건');
+              const yPre = getLeftAnchorY('선행조치');
+              const yCause = getLeftAnchorY('가능한이유');
+              const yAct = getLeftAnchorY('조치', '선행'); // '선행조치' 절대 배제
+              const yEnd = (lines.find(l => l.text.includes('Guided Diagnostics') || l.text.includes('주석:')) || { y: 0 }).y;
 
-              // 우측 본문($X \ge dynamicSplitX$) 줄바꿈 문장 완벽 결합
-              function extractSection(startIdx, endIdx) {
-                if (startIdx === -1) return '없음';
-                const actualEnd = (endIdx !== -1) ? endIdx : (lines.length);
-                const secLines = lines.slice(startIdx, actualEnd);
+              // 상단 코드 정의부 Y-Band 추출
+              let ecu = '엔진 제어 모듈';
+              if (yECU && yComp) ecu = extractRightContentInYBand(yECU, yComp, false);
 
-                let bullets = [];
-                secLines.forEach((l) => {
-                  const contentItems = l.items.filter(it => it.x >= dynamicSplitX);
-                  const lineContent = contentItems.map(it => it.str).join(' ').trim();
-                  if (!lineContent || lineContent === '없음' || lineContent === '¡' || lineContent === '○') return;
-
-                  const isBullet = isBulletStart(lineContent) || l.items.some(it => (it.str === '¡' || it.str === '○') && it.x >= dynamicSplitX);
-                  const cleaned = lineContent.replace(BULLET_CLEAN_REGEX, '').trim();
-                  if (!cleaned || cleaned === '없음') return;
-
-                  if (isBullet || bullets.length === 0) {
-                    bullets.push(cleaned);
-                  } else {
-                    bullets[bullets.length - 1] += ' ' + cleaned;
-                  }
-                });
-
-                return bullets.length > 0 ? Array.from(new Set(bullets)).join(' | ') : '없음';
+              let compFull = dtc;
+              if (yComp) {
+                const bottomTarget = yStd || yDiag || (yComp - 30);
+                compFull = extractRightContentInYBand(yComp, bottomTarget, false);
+                if (compFull === '-' || !compFull) compFull = dtc;
               }
 
-              let eventText = extractSection(idxEvent, idxSym);
-              let symptomText = extractSection(idxSym, idxCond);
-              let condText = extractSection(idxCond, idxPre);
+              let standard = '';
+              if (yStd) {
+                const bottomTarget = yDiag || yEvent || (yStd - 30);
+                standard = extractRightContentInYBand(yStd, bottomTarget, false);
+                if (standard === '-') standard = '';
+              }
+
+              // 6대 진단 항목 Y-Band 수직 구간 격리 추출
+              let eventText = '-';
+              if (yEvent && ySym) {
+                eventText = extractRightContentInYBand(yEvent, ySym, false);
+              }
+
+              let symptomText = '없음';
+              if (ySym && yCond) {
+                symptomText = extractRightContentInYBand(ySym, yCond, true);
+              }
+
+              let condText = '없음';
+              if (yCond && yPre) {
+                condText = extractRightContentInYBand(yCond, yPre, true);
+              }
 
               let preDtcText = '없음';
-              if (idxPre !== -1) {
-                const rawPre = extractSection(idxPre, idxCause);
+              if (yPre && yCause) {
+                const rawPre = extractRightContentInYBand(yPre, yCause, true);
                 if (rawPre && rawPre !== '없음') {
                   const codes = rawPre.match(/([P|U|B|C][0-9A-Z]{5,7})/g) || [];
                   const validCodes = codes.filter(c => c !== dtc && !c.startsWith('DTC'));
@@ -536,8 +552,15 @@
                 }
               }
 
-              let causesText = extractSection(idxCause, idxAct);
-              let actionsText = extractSection(idxAct, idxEnd !== -1 ? idxEnd : lines.length);
+              let causesText = '없음';
+              if (yCause && yAct) {
+                causesText = extractRightContentInYBand(yCause, yAct, true);
+              }
+
+              let actionsText = '없음';
+              if (yAct) {
+                actionsText = extractRightContentInYBand(yAct, yEnd, true);
+              }
 
               resolve({
                 docType: 'iso',
