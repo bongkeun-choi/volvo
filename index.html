@@ -309,7 +309,7 @@
 
         const isSae = (d.type === 'sae');
         const typeBadge = isSae ? `<span class="acc-tag-type" style="background:#f3e8ff; color:#7e22ce;">SAE J1939</span>` : `<span class="acc-tag-type" style="background:#e0f2fe; color:#0369a1;">ISO DTC</span>`;
-        let serialBadge = (d.factory || d.serialStart || d.serialEnd) ? `<span class="acc-tag-serial">📍 ${d.factory || ''} #${d.serialStart || '시작'}~${d.serialEnd || '종료'}</span>` : '';
+        let serialBadge = (d.factory || d.serialStart || d.serialEnd) ? `<span class="acc-tag-serial">📍 ${splitToList(d.factory)[0] || ''} #${splitToList(d.serialStart)[0] || '시작'}~${splitToList(d.serialEnd)[0] || '종료'}</span>` : '';
 
         let contentHtml = '';
         if (currentMode === 'oem') contentHtml = isSae ? renderSaeOemStyle(d) : renderIsoOemStyle(d);
