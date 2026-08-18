@@ -229,7 +229,7 @@
       const matches = dtcData.filter(item => isErrorCodeMatch(item, q)).slice(0, 8);
       if (matches.length > 0) {
         let acHtml = `<div class="ac-header"><span>추천 에러코드 (${matches.length}건)</span><button type="button" class="btn-close-ac" onclick="closeAutocomplete()">목록 접기 ▴</button></div>`;
-        acHtml += matches.map(item => `<div class="autocomplete-item" onclick="selectKeyword('${item.dtc}')"><span class="ac-code">${item.dtc}</span><span class="ac-sub">(${item.modelType || ''}${item.factory ? ' / ' + item.factory : ''})</span></div>`).join('');
+        acHtml += matches.map(item => `<div class="autocomplete-item" onclick="selectKeyword('${item.dtc}')"><span class="ac-code">${item.dtc}</span><span class="ac-sub">(${splitToList(item.modelType)[0] || ''}${item.factory ? ' / ' + splitToList(item.factory)[0] : ''})</span></div>`).join('');
         acList.innerHTML = acHtml; acList.style.display = 'block'; document.getElementById('btnToggleDropdown').innerText = '▴';
       } else closeAutocomplete();
     }
@@ -309,7 +309,11 @@
 
         const isSae = (d.type === 'sae');
         const typeBadge = isSae ? `<span class="acc-tag-type" style="background:#f3e8ff; color:#7e22ce;">SAE J1939</span>` : `<span class="acc-tag-type" style="background:#e0f2fe; color:#0369a1;">ISO DTC</span>`;
-        let serialBadge = (d.factory || d.serialStart || d.serialEnd) ? `<span class="acc-tag-serial">📍 ${splitToList(d.factory)[0] || ''} #${splitToList(d.serialStart)[0] || '시작'}~${splitToList(d.serialEnd)[0] || '종료'}</span>` : '';
+        
+        const firstFact = splitToList(d.factory)[0] || '';
+        const firstStart = splitToList(d.serialStart)[0] || '';
+        const firstEnd = splitToList(d.serialEnd)[0] || '';
+        let serialBadge = (firstFact || firstStart || firstEnd) ? `<span class="acc-tag-serial">📍 ${firstFact} #${firstStart || '시작'}~${firstEnd || '종료'}</span>` : '';
 
         let contentHtml = '';
         if (currentMode === 'oem') contentHtml = isSae ? renderSaeOemStyle(d) : renderIsoOemStyle(d);
