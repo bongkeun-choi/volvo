@@ -145,7 +145,7 @@
     </div>
 
     <div class="search-wrapper">
-      <input type="text" id="searchInput" class="search-input" placeholder="에러코드(예: 12, P2047, 187, PID91) 입력..." autocomplete="off" oninput="onSearchInput()" onclick="toggleDropdownOnInputClick()">
+      <input type="text" id="searchInput" class="search-input" placeholder="에러코드(예: 12, P2047, 187, PID91, PID45) 입력..." autocomplete="off" oninput="onSearchInput()" onclick="toggleDropdownOnInputClick()">
       <div class="search-actions">
         <button type="button" id="btnToggleDropdown" class="action-btn btn-toggle-dropdown" onclick="toggleDropdownManually(event)" title="목록 열기/닫기">▼</button>
         <button type="button" id="clearBtn" class="action-btn clear-btn" onclick="clearSearch(event)" title="검색어 지우기">×</button>
@@ -321,7 +321,7 @@
             <div class="acc-header-info">
               <div class="acc-tags-row">
                 <span class="acc-tag-dtc">${d.dtc}</span>
-                <span class="acc-tag-model">${d.modelType || 'Volvo'}</span>
+                <span class="acc-tag-model">${splitToList(d.modelType)[0] || 'Volvo'}</span>
                 ${serialBadge}
                 ${typeBadge}
               </div>
@@ -340,6 +340,24 @@
         if (!arr || arr.length === 0 || (arr.length === 1 && arr[0] === '없음')) return `<div class="oem-bullet-row"><span>○</span><span>없음</span></div>`;
         return arr.map(t => `<div class="oem-bullet-row"><span style="font-size:11px; margin-top:2px;">○</span><span>${t}</span></div>`).join('');
       };
+
+      const models = splitToList(d.modelType);
+      const factories = splitToList(d.factory);
+      const starts = splitToList(d.serialStart);
+      const ends = splitToList(d.serialEnd);
+      const rowCount = Math.max(models.length, factories.length, starts.length, ends.length, 1);
+
+      let serialRowsHtml = '';
+      for (let r = 0; r < rowCount; r++) {
+        serialRowsHtml += `
+          <tr>
+            <td>${models[r] || models[0] || 'Volvo'}</td>
+            <td>${factories[r] || '-'}</td>
+            <td>${starts[r] || '-'}</td>
+            <td>${ends[r] || '-'}</td>
+          </tr>
+        `;
+      }
 
       let fmiTablesHtml = '';
       (d.fmiList || []).forEach(f => {
@@ -391,12 +409,7 @@
               <td style="width:20%;">일련 번호 시작</td>
               <td style="width:20%;">일련 번호 종료</td>
             </tr>
-            <tr>
-              <td>${d.modelType || 'EW145B Volvo'}</td>
-              <td>${d.factory || '-'}</td>
-              <td>${d.serialStart || '-'}</td>
-              <td>${d.serialEnd || '-'}</td>
-            </tr>
+            ${serialRowsHtml}
           </table>
           <table class="oem-tbl">
             <tr><th colspan="2">SAE 코드</th></tr>
@@ -428,17 +441,35 @@
         return list.map(c => `<div class="oem-bullet-row"><span style="font-size:11px; margin-top:2px;">○</span><span style="color:#0044cc; text-decoration:underline; cursor:pointer;" onclick="selectKeyword('${c}')">☍ ${c}</span></div>`).join('');
       };
 
+      const models = splitToList(d.modelType);
+      const factories = splitToList(d.factory);
+      const starts = splitToList(d.serialStart);
+      const ends = splitToList(d.serialEnd);
+      const rowCount = Math.max(models.length, factories.length, starts.length, ends.length, 1);
+
+      let serialRowsHtml = '';
+      for (let r = 0; r < rowCount; r++) {
+        serialRowsHtml += `
+          <tr>
+            <td>${models[r] || models[0] || '-'}</td>
+            <td>${factories[r] || '-'}</td>
+            <td>${starts[r] || '-'}</td>
+            <td>${ends[r] || '-'}</td>
+          </tr>
+        `;
+      }
+
       return `
         <div class="mode-oem-sheet">
           <div class="oem-header"><div class="oem-logo">VOLVO</div><div class="oem-doc-title">Volvo 유도 진단</div></div>
           <table class="oem-tbl">
-            <tr><td style="width: 25%;"><b>일자:</b><br>2026-08-17</td><td style="width: 30%;"><b>정보 유형:</b><br>진단 오류 코드</td><td style="width: 45%;"><b>프로필:</b><br><b>${d.modelType || 'EW140E Volvo'}</b></td></tr>
+            <tr><td style="width: 25%;"><b>일자:</b><br>2026-08-17</td><td style="width: 30%;"><b>정보 유형:</b><br>진단 오류 코드</td><td style="width: 45%;"><b>프로필:</b><br><b>${splitToList(d.modelType)[0] || 'EW140E Volvo'}</b></td></tr>
           </table>
           <div class="oem-dtc-big">${d.dtc}</div>
           <table class="oem-tbl">
             <tr><th colspan="4">일련 번호에 대해 유효</th></tr>
             <tr style="background:#f2f2f2; font-weight:bold;"><td style="width:35%;">모델 종류:</td><td style="width:25%;">생산 사업장</td><td style="width:20%;">일련 번호 시작</td><td style="width:20%;">일련 번호 종료</td></tr>
-            <tr><td>${d.modelType || '-'}</td><td>${d.factory || '-'}</td><td>${d.serialStart || '-'}</td><td>${d.serialEnd || '-'}</td></tr>
+            ${serialRowsHtml}
           </table>
           <table class="oem-tbl">
             <tr><th colspan="2">ISO DTC 코드</th></tr>
@@ -475,7 +506,7 @@
       return `
         <div class="mode-card-wrap">
           <div class="m-card m-hero">
-            <div class="m-badge-group"><span class="m-badge m-badge-red">SAE 고장코드</span><span class="m-badge m-badge-blue">${d.ecu || '제어기'}</span><span class="m-badge" style="background:#f1f5f9; color:#475569;">${d.modelType || 'Volvo'}</span></div>
+            <div class="m-badge-group"><span class="m-badge m-badge-red">SAE 고장코드</span><span class="m-badge m-badge-blue">${d.ecu || '제어기'}</span><span class="m-badge" style="background:#f1f5f9; color:#475569;">${splitToList(d.modelType)[0] || 'Volvo'}</span></div>
             <div class="m-hero-dtc">${d.dtc} ${d.displayMsg ? '/ ' + d.displayMsg : ''}</div>
             <div class="m-hero-desc">${d.paramName || ''}</div>
           </div>
@@ -489,7 +520,7 @@
       return `
         <div class="mode-card-wrap">
           <div class="m-card m-hero">
-            <div class="m-badge-group"><span class="m-badge m-badge-red">ISO 고장코드</span><span class="m-badge m-badge-blue">${d.ecu || '제어기'}</span><span class="m-badge" style="background:#f1f5f9; color:#475569;">${d.modelType || 'Volvo'}</span></div>
+            <div class="m-badge-group"><span class="m-badge m-badge-red">ISO 고장코드</span><span class="m-badge m-badge-blue">${d.ecu || '제어기'}</span><span class="m-badge" style="background:#f1f5f9; color:#475569;">${splitToList(d.modelType)[0] || 'Volvo'}</span></div>
             <div class="m-hero-dtc">${d.dtc}</div>
             <div class="m-hero-desc">${d.compFull || ''}</div>
           </div>
@@ -513,7 +544,7 @@
       `).join('');
       return `
         <div class="mode-dark-wrap">
-          <div class="d-card d-hero"><div class="d-tag">SAE FAULT CODE</div><div class="d-dtc-code">${d.dtc} ${d.displayMsg ? '/ ' + d.displayMsg : ''}</div><div class="d-ecu-name">${d.ecu || '제어기'} &nbsp;|&nbsp; ${d.modelType || 'Volvo'}</div><div class="d-comp-desc">${d.paramName || ''}</div></div>
+          <div class="d-card d-hero"><div class="d-tag">SAE FAULT CODE</div><div class="d-dtc-code">${d.dtc} ${d.displayMsg ? '/ ' + d.displayMsg : ''}</div><div class="d-ecu-name">${d.ecu || '제어기'} &nbsp;|&nbsp; ${splitToList(d.modelType)[0] || 'Volvo'}</div><div class="d-comp-desc">${d.paramName || ''}</div></div>
           <div class="d-card"><div style="font-size:13px; font-weight:800; color:#fbbf24; margin-bottom:4px;">📋 FMI 고장 모드 목록</div>${fmiDarkCards}</div>
         </div>
       `;
@@ -522,7 +553,7 @@
     function renderIsoDarkStyle(d) {
       return `
         <div class="mode-dark-wrap">
-          <div class="d-card d-hero"><div class="d-tag">CRITICAL FAULT CODE</div><div class="d-dtc-code">${d.dtc}</div><div class="d-ecu-name">${d.ecu || '제어기'} &nbsp;|&nbsp; ${d.modelType || 'Volvo'}</div><div class="d-comp-desc">${d.compFull || ''}</div></div>
+          <div class="d-card d-hero"><div class="d-tag">CRITICAL FAULT CODE</div><div class="d-dtc-code">${d.dtc}</div><div class="d-ecu-name">${d.ecu || '제어기'} &nbsp;|&nbsp; ${splitToList(d.modelType)[0] || 'Volvo'}</div><div class="d-comp-desc">${d.compFull || ''}</div></div>
           <div class="d-card"><div style="font-size:13px; font-weight:800; color:#38bdf8; margin-bottom:4px;">⚡ 고장 신호 및 감지</div><div style="font-size:12.5px; color:#f87171;">• 이벤트: ${d.event || '-'}</div><div style="font-size:12px; color:#94a3b8; margin-top:2px;">• 증상: ${d.symptom || '없음'}</div></div>
           <div class="d-card" style="border:1px solid #10b981;"><div style="font-size:13px; font-weight:800; color:#34d399; margin-bottom:6px;">🔧 행동 수칙 (Action)</div><div style="font-size:12.5px; color:#f3f4f6;">${d.actions || '없음'}</div></div>
         </div>
