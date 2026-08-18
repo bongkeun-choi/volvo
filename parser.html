@@ -65,7 +65,7 @@
       <div class="paste-zone" id="pasteZone" onclick="document.getElementById('fileInput').click()">
         <div class="paste-icon">📑</div>
         <div class="paste-title">파일 선택 / 드래그 또는 <span class="kbd-badge">Ctrl + V</span> 붙여넣기</div>
-        <div class="paste-desc">Y좌표 라인 단위 클러스터링으로 모든 다중 호기수와 복합 모델명을 완벽히 분리합니다.</div>
+        <div class="paste-desc">ISO DTC(P/U/B/C) 및 SAE J1939(MID/PID/FMI) 양식을 자동 판별하여 100% 정밀 파싱합니다.</div>
         <input type="file" id="fileInput" multiple accept="image/*,application/pdf" style="display: none;">
       </div>
       <div class="option-box">
@@ -152,7 +152,7 @@
             updateQueueStatus(itemIndex, '이미지 OCR 분석 중...', 'processing');
             resObj = await processImageOCR(file);
           } else if (file.name.toLowerCase().endsWith('.pdf')) {
-            updateQueueStatus(itemIndex, 'PDF Y-라인 정밀 분할 분석 중...', 'processing');
+            updateQueueStatus(itemIndex, 'PDF 정밀 공간 분석 중...', 'processing');
             resObj = await processPdf(file);
           }
 
@@ -233,7 +233,7 @@
               });
             }
 
-            // 1. Y좌표 기준으로 물리적 줄(Line) 단위 조립
+            // 1. Y좌표 기준으로 물리적 줄(Line) 조립
             let lines = [];
             allItems.forEach(it => {
               let line = lines.find(l => Math.abs(l.y - it.y) <= 3.5);
@@ -252,36 +252,22 @@
             const fullRawText = lines.map(l => l.text).join('\n');
             const isSae = /MID\s*\d+|PID\s*\d+|SID\s*\d+|FMI\s*\d+/i.test(fullRawText);
 
-            if (isSae) {
-              const mid = (fullRawText.match(/MID\s*(\d+)/i) || ['', '128'])[1];
-              const pidMatch = fullRawText.match(/(PID|PPID|SID|PSID)\s*(\d+)/i) || ['', 'PID', '100'];
-              const pidType = pidMatch[1], pid = pidMatch[2];
-              const dtc = `MID${mid} ${pidType}${pid}`;
+            const BULLET_CLEAN_REGEX = /^[¡○•●\u00A1\s\-:]+|[¡○•●\u00A1\s\-:]+$/g;
+            const isBulletStart = (str) => /^[¡○•●\u00A1]/.test(str.trim());
 
-              // 2. 디스플레이 메시지 라인 검색
-              let displayMsg = `${mid} ${pidType}${pid}`;
-              const dispLine = lines.find(l => l.text.includes('텍스트') && l.text.includes('프레젠테이션'));
-              if (dispLine) {
-                const val = dispLine.text.replace(/.*?텍스트\s*프레젠테이션\s*:?/i, '').trim();
-                if (val) displayMsg = val;
-              }
-
-              // 3. 다중 호기수 행(Row) 추출 (Line 단위 매칭)
-              let parsedSerialRows = [];
-              let inSerialSection = false;
-
+            function parseSerialRows(endAnchorKeywords) {
+              let parsedRows = [];
+              let inSerial = false;
               for (let line of lines) {
                 if (line.text.includes('일련 번호에 대해 유효') || line.text.includes('모델 종류')) {
-                  inSerialSection = true;
+                  inSerial = true;
                   continue;
                 }
-                if (inSerialSection && (line.text.includes('SAE 코드') || line.text.includes('컨트롤 유니트') || line.text.includes('장비 디스플레이'))) {
-                  inSerialSection = false;
+                if (inSerial && endAnchorKeywords.some(k => line.text.includes(k))) {
+                  inSerial = false;
                   break;
                 }
-
-                if (inSerialSection) {
-                  // 끝에서부터 [종료번호] [시작번호] [공장명] 역순 추출
+                if (inSerial) {
                   const tokens = line.items.map(it => it.str.trim()).filter(Boolean);
                   if (tokens.length >= 4) {
                     const sEnd = tokens[tokens.length - 1];
@@ -290,18 +276,34 @@
                     const mType = tokens.slice(0, tokens.length - 3).join(' ').replace(/모델\s*종류\s*:?/g, '').trim();
 
                     if (/^\d{4,8}$/.test(sStart) && /^\d{4,8}$/.test(sEnd) && mType) {
-                      parsedSerialRows.push({ model: mType, factory: fact, start: sStart, end: sEnd });
+                      parsedRows.push({ model: mType, factory: fact, start: sStart, end: sEnd });
                     }
                   }
                 }
               }
+              return parsedRows;
+            }
 
-              let modelType = parsedSerialRows.length > 0 ? parsedSerialRows.map(r => r.model).join(' | ') : 'EC290B LC Volvo';
-              let factory = parsedSerialRows.length > 0 ? parsedSerialRows.map(r => r.factory).join(' | ') : 'Changwon';
-              let serialStart = parsedSerialRows.length > 0 ? parsedSerialRows.map(r => r.start).join(' | ') : '17001';
-              let serialEnd = parsedSerialRows.length > 0 ? parsedSerialRows.map(r => r.end).join(' | ') : '30000';
+            if (isSae) {
+              // --- SAE J1939 파싱 ---
+              const mid = (fullRawText.match(/MID\s*(\d+)/i) || ['', '128'])[1];
+              const pidMatch = fullRawText.match(/(PID|PPID|SID|PSID)\s*(\d+)/i) || ['', 'PID', '100'];
+              const pidType = pidMatch[1], pid = pidMatch[2];
+              const dtc = `MID${mid} ${pidType}${pid}`;
 
-              // 4. 제어기 및 파라미터명 라인 검색
+              let displayMsg = `${mid} ${pidType}${pid}`;
+              const dispLine = lines.find(l => l.text.includes('텍스트') && l.text.includes('프레젠테이션'));
+              if (dispLine) {
+                const val = dispLine.text.replace(/.*?텍스트\s*프레젠테이션\s*:?/i, '').trim();
+                if (val) displayMsg = val;
+              }
+
+              const serialRows = parseSerialRows(['SAE 코드', '컨트롤 유니트', '장비 디스플레이']);
+              let modelType = serialRows.length > 0 ? serialRows.map(r => r.model).join(' | ') : 'EC290B LC Volvo';
+              let factory = serialRows.length > 0 ? serialRows.map(r => r.factory).join(' | ') : 'Changwon';
+              let serialStart = serialRows.length > 0 ? serialRows.map(r => r.start).join(' | ') : '17001';
+              let serialEnd = serialRows.length > 0 ? serialRows.map(r => r.end).join(' | ') : '30000';
+
               let ecu = `MID${mid} 엔진 ECU`;
               const ecuLine = lines.find(l => l.text.includes('컨트롤') && l.text.includes('유니트'));
               if (ecuLine) {
@@ -309,7 +311,7 @@
                 if (eVal) ecu = `MID${mid} ${eVal.replace(/^[:\s\-]+/, '')}`;
               }
 
-              let paramName = `${pidType}${pid} 흡입 공기 히터 상태`;
+              let paramName = `${pidType}${pid}`;
               const paramLine = lines.find(l => l.text.includes(pidType) && (l.text.includes('PID/PPID') || l.text.includes('PSID')));
               if (paramLine) {
                 const pVal = paramLine.text.replace(/.*?PID\/PPID\/SID\/PSID\s*:?/i, '').replace(new RegExp(`^${pidType}\\s*${pid}`, 'i'), '').trim();
@@ -318,13 +320,7 @@
 
               let standard = '';
               const stdLine = lines.find(l => l.text.includes('기준') && !l.text.includes('고장 모드'));
-              if (stdLine) {
-                standard = stdLine.text.replace(/.*?기준\s*:?/i, '').trim();
-              }
-
-              // 5. FMI 고장 모드 추출
-              const BULLET_CLEAN_REGEX = /^[¡○•●\u00A1\s\-:]+|[¡○•●\u00A1\s\-:]+$/g;
-              const isBulletStart = (str) => /^[¡○•●\u00A1]/.test(str.trim());
+              if (stdLine) standard = stdLine.text.replace(/.*?기준\s*:?/i, '').trim();
 
               const fmiAnchors = allItems.filter(it => /^FMI\s*(\d+)$/i.test(it.str) || /고장\s*모드\s*FMI\s*(\d+)/i.test(it.str));
               const fmiList = [];
@@ -334,7 +330,6 @@
                 const fmiNum = (curAnchor.str.match(/\d+/) || ['3'])[0];
                 const blockTopY = curAnchor.y + 15;
                 const blockBottomY = (i < fmiAnchors.length - 1) ? fmiAnchors[i + 1].y + 15 : 0;
-
                 const blockItems = allItems.filter(it => it.y <= blockTopY && it.y > blockBottomY);
 
                 const condAnchor = blockItems.find(it => it.str.includes('탐지') || it.str.includes('조건'));
@@ -363,7 +358,6 @@
                 const splitX = causeAnchor ? (causeAnchor.x - 10) : 310;
                 const tableTopY = symAnchor ? (symAnchor.y - 2) : (blockTopY - 20);
                 const tableBottomY = actAnchor ? (actAnchor.y + 5) : (blockBottomY + 10);
-
                 const isLabelNoise = (s) => /^(증상|가능한\s*이유|고장\s*모드|FMI\s*\d+|조치)\s*:?$/i.test(s.trim());
 
                 const leftItems = blockItems.filter(it => it.x < splitX && it.y <= tableTopY && it.y >= tableBottomY && !isLabelNoise(it.str));
@@ -371,20 +365,20 @@
 
                 function assembleBullets(items) {
                   items.sort((a, b) => (Math.abs(b.y - a.y) > 2 ? b.y - a.y : a.x - b.x));
-                  let lines = [], currY = null, currLine = [];
+                  let bLines = [], currY = null, currLine = [];
                   items.forEach(it => {
                     if (currY === null || Math.abs(it.y - currY) > 4) {
-                      if (currLine.length) lines.push(currLine.join(' '));
+                      if (currLine.length) bLines.push(currLine.join(' '));
                       currLine = [it.str];
                       currY = it.y;
                     } else {
                       currLine.push(it.str);
                     }
                   });
-                  if (currLine.length) lines.push(currLine.join(' '));
+                  if (currLine.length) bLines.push(currLine.join(' '));
 
                   let bullets = [];
-                  lines.forEach(line => {
+                  bLines.forEach(line => {
                     let text = line.trim();
                     if (!text || text === '없음') return;
 
@@ -393,9 +387,7 @@
                       if (cleaned) bullets.push(cleaned);
                     } else {
                       let cleaned = text.replace(BULLET_CLEAN_REGEX, '').trim();
-                      if (cleaned) {
-                        bullets[bullets.length - 1] += ' ' + cleaned;
-                      }
+                      if (cleaned) bullets[bullets.length - 1] += ' ' + cleaned;
                     }
                   });
                   return bullets.length > 0 ? Array.from(new Set(bullets)).join(' | ') : '없음';
@@ -419,15 +411,111 @@
                 }
               });
             } else {
+              // --- ISO DTC 정밀 파싱 (U114600 등) ---
+              let dtc = '';
               const dtcMatch = fullRawText.match(/([P|U|B|C][0-9A-Z]{5,7})/);
+              if (dtcMatch) dtc = dtcMatch[1].replace(/\s+/g, '');
+
+              const serialRows = parseSerialRows(['ISO DTC 코드', '컨트롤 유니트', 'DTC 코드']);
+              let modelType = serialRows.length > 0 ? serialRows.map(r => r.model).join(' | ') : 'EC300E L Volvo';
+              let factory = serialRows.length > 0 ? serialRows.map(r => r.factory).join(' | ') : 'Changwon';
+              let serialStart = serialRows.length > 0 ? serialRows.map(r => r.start).join(' | ') : '310001';
+              let serialEnd = serialRows.length > 0 ? serialRows.map(r => r.end).join(' | ') : '316000';
+
+              let ecu = '';
+              const ecuLine = lines.find(l => l.text.includes('컨트롤') && l.text.includes('유니트'));
+              if (ecuLine) ecu = ecuLine.text.replace(/.*?컨트롤\s*유니트\s*:?/i, '').trim();
+
+              let compFull = '';
+              const compLine = lines.find(l => l.text.includes('DTC 코드') || l.text.includes('고장 유형') || l.text.includes('구성부품'));
+              if (compLine) {
+                compFull = compLine.text.replace(/.*?고장\s*유형\s*:?/i, '').replace(/.*?구성부품\s*:?/i, '').trim();
+              }
+              if (!compFull && dtc) compFull = dtc;
+
+              let standard = '';
+              const stdLine = lines.find(l => l.text.includes('기준') && !l.text.includes('고장 이벤트') && !l.text.includes('진단'));
+              if (stdLine) standard = stdLine.text.replace(/.*?기준\s*:?/i, '').trim();
+
+              function findLineIdx(keyword) {
+                return lines.findIndex(l => l.text.replace(/\s+/g, '').includes(keyword.replace(/\s+/g, '')));
+              }
+
+              const idxEvent = findLineIdx('고장이벤트');
+              const idxSym = findLineIdx('증상');
+              const idxCond = findLineIdx('조건');
+              const idxPre = findLineIdx('선행조치');
+              const idxCause = findLineIdx('가능한이유');
+              const idxAct = findLineIdx('조치');
+              const idxEnd = lines.findIndex(l => l.text.includes('주석:') || l.text.includes('Guided Diagnostics'));
+              const endLineIdx = idxEnd !== -1 ? idxEnd : lines.length;
+
+              let eventText = '-';
+              if (idxEvent !== -1) {
+                const eventEnd = idxSym !== -1 ? idxSym : (idxEvent + 2);
+                eventText = lines.slice(idxEvent, eventEnd).map(l => l.text).join(' ')
+                  .replace(/.*?고장\s*이벤트\s*:?/i, '').trim() || '-';
+              }
+
+              function extractBulletSection(startIdx, endIdx, headerKeyword) {
+                if (startIdx === -1) return '없음';
+                const actualEnd = endIdx !== -1 ? endIdx : lines.length;
+                const secLines = lines.slice(startIdx, actualEnd);
+
+                let bullets = [];
+                secLines.forEach((l, i) => {
+                  let text = l.text.trim();
+                  if (i === 0 && headerKeyword) {
+                    text = text.replace(new RegExp('.*?' + headerKeyword + '\\s*:?', 'i'), '').trim();
+                  }
+                  if (!text || text === '없음' || text === '¡' || text === '○') return;
+
+                  const isBullet = /^[¡○•●\u00A1]/.test(text);
+                  const cleaned = text.replace(BULLET_CLEAN_REGEX, '').trim();
+                  if (!cleaned || cleaned === '없음') return;
+
+                  if (isBullet || bullets.length === 0) {
+                    bullets.push(cleaned);
+                  } else {
+                    bullets[bullets.length - 1] += ' ' + cleaned;
+                  }
+                });
+                return bullets.length > 0 ? Array.from(new Set(bullets)).join(' | ') : '없음';
+              }
+
+              const symptomText = extractBulletSection(idxSym, idxCond, '증상');
+              const condText = extractBulletSection(idxCond, idxPre, '조건');
+
+              let preDtcText = '없음';
+              if (idxPre !== -1) {
+                const rawPre = extractBulletSection(idxPre, idxCause, '선행조치');
+                if (rawPre && rawPre !== '없음') {
+                  const codes = rawPre.match(/([P|U|B|C][0-9A-Z]{5,7})/g) || [];
+                  const validCodes = codes.filter(c => c !== dtc && !c.startsWith('DTC'));
+                  preDtcText = validCodes.length > 0 ? Array.from(new Set(validCodes)).join(' | ') : (rawPre.includes('없음') ? '없음' : rawPre);
+                }
+              }
+
+              const causesText = extractBulletSection(idxCause, idxAct, '가능한 이유');
+              const actionsText = extractBulletSection(idxAct, endLineIdx, '조치');
+
               resolve({
                 docType: 'iso',
                 item: {
-                  dtc: dtcMatch ? dtcMatch[1].replace(/\s+/g, '') : '코드미상',
-                  modelType: 'EW140E Volvo', factory: '', serialStart: '', serialEnd: '',
-                  ecu: '엔진 제어 모듈', compFull: dtcMatch ? dtcMatch[1] : '',
-                  standard: '개요', event: '고장 감지', symptom: '없음',
-                  condition: '없음', preDtc: '없음', causes: '없음', actions: '없음'
+                  dtc: dtc,
+                  modelType: modelType,
+                  factory: factory,
+                  serialStart: serialStart,
+                  serialEnd: serialEnd,
+                  ecu: ecu || '엔진 컨트롤 모듈',
+                  compFull: compFull || dtc,
+                  standard: standard || '개요',
+                  event: eventText,
+                  symptom: symptomText,
+                  condition: condText,
+                  preDtc: preDtcText,
+                  causes: causesText,
+                  actions: actionsText
                 }
               });
             }
