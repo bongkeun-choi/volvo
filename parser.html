@@ -65,7 +65,7 @@
       <div class="paste-zone" id="pasteZone" onclick="document.getElementById('fileInput').click()">
         <div class="paste-icon">📑</div>
         <div class="paste-title">파일 선택 / 드래그 또는 <span class="kbd-badge">Ctrl + V</span> 붙여넣기</div>
-        <div class="paste-desc">다중 호기수(창원/상하이 등) 및 복합 모델명(EC290B LC 등)을 100% 정밀 파싱합니다.</div>
+        <div class="paste-desc">다중 호기수 라인 분할 파서가 적용되어 여러 공장/호기수가 각각 정상 분리됩니다.</div>
         <input type="file" id="fileInput" multiple accept="image/*,application/pdf" style="display: none;">
       </div>
       <div class="option-box">
@@ -257,21 +257,40 @@
 
               let displayMsg = getRowRightText(allItems, '텍스트프레젠테이션') || `${mid} ${pidType}${pid}`;
 
-              // 다중 호기수 및 복합 모델명 전수 수집
+              // [수정 핵심] 일련번호 표를 Y좌표 라인별로 물리적 그룹화 후 행 단위 매칭
               let modelArr = [], factoryArr = [], startArr = [], endArr = [];
-              const serialBlockMatch = fullRawText.match(/일련\s*번호에\s*대해\s*유효[\s\S]*?(?=SAE\s*코드|MID[\/\s]*컨트롤|장비\s*디스플레이|$)/i);
-              const serialBlockText = serialBlockMatch ? serialBlockMatch[0] : fullRawText;
+              const serialTopAnchor = allItems.find(it => it.str.includes('일련 번호에 대해 유효') || it.str.includes('모델 종류'));
+              const serialBottomAnchor = allItems.find(it => it.str.includes('SAE 코드') || it.str.includes('컨트롤 유니트') || it.str.includes('장비 디스플레이'));
 
-              const rowRegex = /([A-Z0-9\s\-]+Volvo)\s+([A-Za-z가-힣]+)\s+(\d{4,8})\s+(\d{4,8})/gi;
-              let rMatch;
-              while ((rMatch = rowRegex.exec(serialBlockText)) !== null) {
-                let mName = rMatch[1].replace(/모델\s*종류\s*:?/g, '').trim();
-                if (mName) {
-                  modelArr.push(mName);
-                  factoryArr.push(rMatch[2].trim());
-                  startArr.push(rMatch[3].trim());
-                  endArr.push(rMatch[4].trim());
-                }
+              if (serialTopAnchor && serialBottomAnchor) {
+                const serialItems = allItems.filter(it => it.y < (serialTopAnchor.y - 4) && it.y > (serialBottomAnchor.y + 4));
+                
+                let lines = [], currY = null, currLine = [];
+                serialItems.forEach(it => {
+                  if (currY === null || Math.abs(it.y - currY) > 4) {
+                    if (currLine.length) lines.push(currLine);
+                    currLine = [it];
+                    currY = it.y;
+                  } else {
+                    currLine.push(it);
+                  }
+                });
+                if (currLine.length) lines.push(currLine);
+
+                lines.forEach(row => {
+                  row.sort((a, b) => a.x - b.x);
+                  const rowStr = row.map(it => it.str).join(' ').trim();
+                  if (!rowStr || rowStr.includes('모델 종류') || rowStr.includes('생산 사업장') || rowStr.includes('일련 번호')) return;
+
+                  // 줄 단위 매칭: [모델명] [생산지] [시작번호] [종료번호]
+                  const m = rowStr.match(/^(.*?)\s+([A-Za-z가-힣]+)\s+(\d{4,8})\s+(\d{4,8})$/);
+                  if (m) {
+                    modelArr.push(m[1].replace(/모델\s*종류\s*:?/g, '').trim());
+                    factoryArr.push(m[2].trim());
+                    startArr.push(m[3].trim());
+                    endArr.push(m[4].trim());
+                  }
+                });
               }
 
               let modelType = modelArr.length > 0 ? modelArr.join(' | ') : 'EC290B LC Volvo';
