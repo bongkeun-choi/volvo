@@ -145,7 +145,7 @@
     </div>
 
     <div class="search-wrapper">
-      <input type="text" id="searchInput" class="search-input" placeholder="에러코드(예: U103409, U114600, PID45, PID91) 입력..." autocomplete="off" oninput="onSearchInput()" onclick="toggleDropdownOnInputClick()">
+      <input type="text" id="searchInput" class="search-input" placeholder="에러코드(예: B11DB2F, B102311, U114600, PID45) 입력..." autocomplete="off" oninput="onSearchInput()" onclick="toggleDropdownOnInputClick()">
       <div class="search-actions">
         <button type="button" id="btnToggleDropdown" class="action-btn btn-toggle-dropdown" onclick="toggleDropdownManually(event)" title="목록 열기/닫기">▼</button>
         <button type="button" id="clearBtn" class="action-btn clear-btn" onclick="clearSearch(event)" title="검색어 지우기">×</button>
@@ -229,7 +229,11 @@
       const matches = dtcData.filter(item => isErrorCodeMatch(item, q)).slice(0, 8);
       if (matches.length > 0) {
         let acHtml = `<div class="ac-header"><span>추천 에러코드 (${matches.length}건)</span><button type="button" class="btn-close-ac" onclick="closeAutocomplete()">목록 접기 ▴</button></div>`;
-        acHtml += matches.map(item => `<div class="autocomplete-item" onclick="selectKeyword('${item.dtc}')"><span class="ac-code">${item.dtc}</span><span class="ac-sub">(${splitToList(item.modelType)[0] || ''}${item.factory ? ' / ' + splitToList(item.factory)[0] : ''})</span></div>`).join('');
+        acHtml += matches.map(item => {
+          const isOpt = String(item.factory || '').startsWith('[옵션]');
+          const subText = isOpt ? `${item.factory} (${splitToList(item.serialStart)[0] || ''})` : `${splitToList(item.modelType)[0] || ''}${item.factory ? ' / ' + splitToList(item.factory)[0] : ''}`;
+          return `<div class="autocomplete-item" onclick="selectKeyword('${item.dtc}')"><span class="ac-code">${item.dtc}</span><span class="ac-sub">(${subText})</span></div>`;
+        }).join('');
         acList.innerHTML = acHtml; acList.style.display = 'block'; document.getElementById('btnToggleDropdown').innerText = '▴';
       } else closeAutocomplete();
     }
@@ -310,10 +314,18 @@
         const isSae = (d.type === 'sae');
         const typeBadge = isSae ? `<span class="acc-tag-type" style="background:#f3e8ff; color:#7e22ce;">SAE J1939</span>` : `<span class="acc-tag-type" style="background:#e0f2fe; color:#0369a1;">ISO DTC</span>`;
         
-        const firstFact = splitToList(d.factory)[0] || '';
-        const firstStart = splitToList(d.serialStart)[0] || '';
-        const firstEnd = splitToList(d.serialEnd)[0] || '';
-        let serialBadge = (firstFact || firstStart || firstEnd) ? `<span class="acc-tag-serial">📍 ${firstFact} #${firstStart || '시작'}~${firstEnd || '종료'}</span>` : '';
+        const isOpt = String(d.factory || '').startsWith('[옵션]');
+        let serialBadge = '';
+        if (isOpt) {
+          serialBadge = `<span class="acc-tag-serial" style="background:#e0f2fe; color:#0369a1; border-color:#bae6fd;">⚙️ ${d.factory} (${splitToList(d.serialStart)[0] || ''})</span>`;
+        } else {
+          const firstFact = splitToList(d.factory)[0] || '';
+          const firstStart = splitToList(d.serialStart)[0] || '';
+          const firstEnd = splitToList(d.serialEnd)[0] || '';
+          if (firstFact || firstStart || firstEnd) {
+            serialBadge = `<span class="acc-tag-serial">📍 ${firstFact} #${firstStart || '시작'}~${firstEnd || '종료'}</span>`;
+          }
+        }
 
         let contentHtml = '';
         if (currentMode === 'oem') contentHtml = isSae ? renderSaeOemStyle(d) : renderIsoOemStyle(d);
@@ -329,7 +341,7 @@
                 ${serialBadge}
                 ${typeBadge}
               </div>
-              <div style="font-size:13px; font-weight:700; color:#475569;">${isSae ? (d.paramName || 'SAE 진단서') : (d.event || d.compFull || '')}</div>
+              <div style="font-size:13px; font-weight:700; color:#475569;">${isSae ? (d.paramName || 'SAE 진단서') : (d.compFull || d.event || '')}</div>
             </div>
             <div class="acc-chevron">▼</div>
           </div>
@@ -449,24 +461,40 @@
       const factories = splitToList(d.factory);
       const starts = splitToList(d.serialStart);
       const ends = splitToList(d.serialEnd);
-      const rowCount = Math.max(models.length, factories.length, starts.length, ends.length, 1);
+      const totalCount = Math.max(models.length, factories.length, starts.length, ends.length, 1);
 
-      const isOptionTable = (factories[0] || '').startsWith('[옵션]');
-      let tableHeaderHtml = isOptionTable 
-        ? `<tr><th colspan="4">옵션/구성에 대해 유효</th></tr><tr style="background:#f2f2f2; font-weight:bold;"><td style="width:30%;">모델 종류:</td><td style="width:20%;">옵션 번호</td><td style="width:25%;">옵션</td><td style="width:25%;">구성</td></tr>`
-        : `<tr><th colspan="4">일련 번호에 대해 유효</th></tr><tr style="background:#f2f2f2; font-weight:bold;"><td style="width:35%;">모델 종류:</td><td style="width:25%;">생산 사업장</td><td style="width:20%;">일련 번호 시작</td><td style="width:20%;">일련 번호 종료</td></tr>`;
+      let optionRowsHtml = '', serialRowsHtml = '';
 
-      let serialRowsHtml = '';
-      for (let r = 0; r < rowCount; r++) {
-        let fVal = factories[r] || '-';
-        if (isOptionTable) fVal = fVal.replace('[옵션]', '').trim();
-        serialRowsHtml += `
-          <tr>
-            <td>${models[r] || models[0] || '-'}</td>
-            <td>${fVal}</td>
-            <td>${starts[r] || '-'}</td>
-            <td>${ends[r] || '-'}</td>
-          </tr>
+      for (let r = 0; r < totalCount; r++) {
+        const m = models[r] || models[0] || '-';
+        const f = factories[r] || '-';
+        const s = starts[r] || '-';
+        const e = ends[r] || '-';
+
+        if (f.startsWith('[옵션]')) {
+          optionRowsHtml += `<tr><td>${m}</td><td>${f.replace('[옵션]', '').trim()}</td><td>${s}</td><td>${e}</td></tr>`;
+        } else {
+          serialRowsHtml += `<tr><td>${m}</td><td>${f}</td><td>${s}</td><td>${e}</td></tr>`;
+        }
+      }
+
+      let topTablesHtml = '';
+      if (optionRowsHtml) {
+        topTablesHtml += `
+          <table class="oem-tbl">
+            <tr><th colspan="4">옵션/구성에 대해 유효</th></tr>
+            <tr style="background:#f2f2f2; font-weight:bold;"><td style="width:30%;">모델 종류:</td><td style="width:20%;">옵션 번호</td><td style="width:25%;">옵션</td><td style="width:25%;">구성</td></tr>
+            ${optionRowsHtml}
+          </table>
+        `;
+      }
+      if (serialRowsHtml) {
+        topTablesHtml += `
+          <table class="oem-tbl">
+            <tr><th colspan="4">일련 번호에 대해 유효</th></tr>
+            <tr style="background:#f2f2f2; font-weight:bold;"><td style="width:35%;">모델 종류:</td><td style="width:25%;">생산 사업장</td><td style="width:20%;">일련 번호 시작</td><td style="width:20%;">일련 번호 종료</td></tr>
+            ${serialRowsHtml}
+          </table>
         `;
       }
 
@@ -479,10 +507,7 @@
             <tr><td style="width: 25%;"><b>일자:</b><br>2026-08-17</td><td style="width: 30%;"><b>정보 유형:</b><br>진단 오류 코드</td><td style="width: 45%;"><b>프로필:</b><br><b>${splitToList(d.modelType)[0] || 'Volvo'}</b></td></tr>
           </table>
           <div class="oem-dtc-big">${d.dtc}</div>
-          <table class="oem-tbl">
-            ${tableHeaderHtml}
-            ${serialRowsHtml}
-          </table>
+          ${topTablesHtml}
           <table class="oem-tbl">
             <tr><th colspan="2">ISO DTC 코드</th></tr>
             <tr><td style="width: 35%;">컨트롤 유니트</td><td>${d.ecu || '엔진 컨트롤 모듈'}</td></tr>
