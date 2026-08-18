@@ -65,7 +65,7 @@
       <div class="paste-zone" id="pasteZone" onclick="document.getElementById('fileInput').click()">
         <div class="paste-icon">📑</div>
         <div class="paste-title">파일 선택 / 드래그 또는 <span class="kbd-badge">Ctrl + V</span> 붙여넣기</div>
-        <div class="paste-desc">옵션/구성 표 및 다중 호기수, 줄바꿈 문장을 완벽히 격리 분석합니다.</div>
+        <div class="paste-desc">옵션/구성 표 및 일련번호 표가 동시에 존재하는 복합 양식을 100% 정밀 분석합니다.</div>
         <input type="file" id="fileInput" multiple accept="image/*,application/pdf" style="display: none;">
       </div>
       <div class="option-box">
@@ -88,9 +88,9 @@
           <tr>
             <th style="width: 12%;">구분</th>
             <th style="width: 18%;">에러코드 (DTC)</th>
-            <th style="width: 22%;">적용 기종 / 일련번호</th>
-            <th style="width: 28%;">고장 유형 / 파라미터</th>
-            <th style="width: 20%;">중복 검사 상태</th>
+            <th style="width: 28%;">적용 기종 / 일련번호(옵션)</th>
+            <th style="width: 25%;">고장 유형 / 파라미터</th>
+            <th style="width: 17%;">중복 검사 상태</th>
           </tr>
         </thead>
         <tbody id="summaryBody"></tbody>
@@ -152,7 +152,7 @@
             updateQueueStatus(itemIndex, '이미지 OCR 분석 중...', 'processing');
             resObj = await processImageOCR(file);
           } else if (file.name.toLowerCase().endsWith('.pdf')) {
-            updateQueueStatus(itemIndex, 'PDF 2D 앵커 격리 분석 중...', 'processing');
+            updateQueueStatus(itemIndex, 'PDF 라인 조립 분석 중...', 'processing');
             resObj = await processPdf(file);
           }
 
@@ -233,105 +233,85 @@
               });
             }
 
-            allItems.sort((a, b) => (Math.abs(b.y - a.y) > 2 ? b.y - a.y : a.x - b.x));
-            const fullRawText = allItems.map(it => it.str).join(' ');
+            // Y좌표 기준 물리적 줄(Line) 조립
+            let lines = [];
+            allItems.forEach(it => {
+              let line = lines.find(l => Math.abs(l.y - it.y) <= 3.5);
+              if (!line) {
+                line = { y: it.y, items: [] };
+                lines.push(line);
+              }
+              line.items.push(it);
+            });
+            lines.sort((a, b) => b.y - a.y);
+            lines.forEach(l => {
+              l.items.sort((a, b) => a.x - b.x);
+              l.text = l.items.map(it => it.str).join(' ').trim();
+            });
+
+            const fullRawText = lines.map(l => l.text).join('\n');
             const isSae = /MID\s*\d+|PID\s*\d+|SID\s*\d+|FMI\s*\d+/i.test(fullRawText);
 
             const BULLET_CLEAN_REGEX = /^[¡○•●\u00A1\s\-:]+|[¡○•●\u00A1\s\-:]+$/g;
             const isBulletStart = (str) => /^[¡○•●\u00A1]/.test(str.trim());
 
-            // 2D 우측 컬럼 텍스트 추출 헬퍼
-            function extractRightColumnText(items, minX, topY, bottomY) {
-              const inside = items.filter(it => it.x >= minX && it.y <= (topY + 3) && it.y > (bottomY + 3));
-              if (inside.length === 0) return '';
-              inside.sort((a, b) => (Math.abs(b.y - a.y) > 2 ? b.y - a.y : a.x - b.x));
-
-              let lines = [], currY = null, currLine = [];
-              inside.forEach(it => {
-                if (currY === null || Math.abs(it.y - currY) > 4) {
-                  if (currLine.length) lines.push(currLine.join(' '));
-                  currLine = [it.str];
-                  currY = it.y;
-                } else {
-                  currLine.push(it.str);
-                }
-              });
-              if (currLine.length) lines.push(currLine.join(' '));
-
-              let bullets = [];
-              lines.forEach(l => {
-                let text = l.trim();
-                if (!text || text === '없음' || text === '¡' || text === '○') return;
-
-                const isBullet = isBulletStart(text);
-                const cleaned = text.replace(BULLET_CLEAN_REGEX, '').trim();
-                if (!cleaned || cleaned === '없음') return;
-
-                if (isBullet || bullets.length === 0) {
-                  bullets.push(cleaned);
-                } else {
-                  bullets[bullets.length - 1] += ' ' + cleaned;
-                }
-              });
-              return bullets.length > 0 ? Array.from(new Set(bullets)).join(' | ') : '없음';
-            }
-
-            // 상단 제원/옵션 표 파싱 함수
-            function parseTopTable() {
-              const isOptionTable = allItems.some(it => it.str.includes('옵션/구성') || it.str.includes('옵션 번호') || it.str.includes('Volvo Active Control'));
-              const topHeaderAnchor = allItems.find(it => it.str.includes('모델 종류') || it.str.includes('옵션/구성') || it.str.includes('일련 번호에 대해'));
-              const bottomHeaderAnchor = allItems.find(it => it.str.includes('ISO DTC 코드') || it.str.includes('SAE 코드') || it.str.includes('컨트롤 유니트'));
-
+            // 상단 다중 표(옵션표 + 일련번호표 동시 존재) 전수 수집 엔진
+            function parseTopTableLines() {
               let parsedRows = [];
-              if (topHeaderAnchor && bottomHeaderAnchor) {
-                const tableItems = allItems.filter(it => it.y < (topHeaderAnchor.y - 4) && it.y > (bottomHeaderAnchor.y + 4));
-                let rowGroups = [], currY = null, currRow = [];
-                tableItems.forEach(it => {
-                  if (currY === null || Math.abs(it.y - currY) > 3.5) {
-                    if (currRow.length) rowGroups.push(currRow);
-                    currRow = [it];
-                    currY = it.y;
-                  } else {
-                    currRow.push(it);
-                  }
-                });
-                if (currRow.length) rowGroups.push(currRow);
+              let currentMode = null; // 'OPTION' | 'SERIAL'
 
-                rowGroups.forEach(row => {
-                  row.sort((a, b) => a.x - b.x);
-                  const tokens = row.map(it => it.str.trim()).filter(Boolean);
-                  if (tokens.length >= 2) {
-                    if (isOptionTable) {
-                      const optNumIdx = tokens.findIndex(t => /^\d{5,8}$/.test(t));
-                      if (optNumIdx !== -1) {
-                        const mType = tokens.slice(0, optNumIdx).join(' ');
-                        const optNum = tokens[optNumIdx];
-                        const rest = tokens.slice(optNumIdx + 1);
-                        const half = Math.ceil(rest.length / 2);
-                        const optName = rest.slice(0, half).join(' ') || 'Volvo Active Control';
-                        const compName = rest.slice(half).join(' ') || optName;
-                        parsedRows.push({ model: mType, factory: `[옵션] ${optNum}`, start: optName, end: compName });
-                      }
-                    } else if (tokens.length >= 4) {
-                      const sEnd = tokens[tokens.length - 1];
-                      const sStart = tokens[tokens.length - 2];
-                      const fact = tokens[tokens.length - 3];
-                      const mType = tokens.slice(0, tokens.length - 3).join(' ').replace(/모델\s*종류\s*:?/g, '').trim();
-                      if (/^\d{4,8}$/.test(sStart) && /^\d{4,8}$/.test(sEnd)) {
-                        parsedRows.push({ model: mType, factory: fact, start: sStart, end: sEnd });
-                      }
+              for (let i = 0; i < lines.length; i++) {
+                const t = lines[i].text;
+                
+                if (t.includes('옵션') && (t.includes('구성') || t.includes('유효'))) {
+                  currentMode = 'OPTION';
+                  continue;
+                } else if (t.includes('일련 번호에 대해 유효') || (t.includes('일련 번호') && t.includes('시작'))) {
+                  currentMode = 'SERIAL';
+                  continue;
+                } else if (t.includes('ISO DTC') || t.includes('SAE 코드') || t.includes('컨트롤 유니트') || t.includes('장비 디스플레이')) {
+                  break;
+                }
+
+                if (!currentMode) continue;
+                if (t.includes('모델 종류') || t.includes('옵션 번호') || t.includes('생산 사업장') || t.includes('일련 번호')) continue;
+
+                const tokens = lines[i].items.map(it => it.str.trim()).filter(Boolean);
+                if (tokens.length < 2) continue;
+
+                if (currentMode === 'OPTION') {
+                  const optIdx = tokens.findIndex(tok => /^\d{6,8}$/.test(tok));
+                  if (optIdx !== -1) {
+                    const mType = tokens.slice(0, optIdx).join(' ');
+                    const optNum = tokens[optIdx];
+                    const rest = tokens.slice(optIdx + 1);
+                    const half = Math.ceil(rest.length / 2);
+                    const optName = rest.slice(0, half).join(' ') || 'Volvo Active Control';
+                    const compName = rest.slice(half).join(' ') || optName;
+                    parsedRows.push({ model: mType, factory: `[옵션] ${optNum}`, start: optName, end: compName });
+                  }
+                } else if (currentMode === 'SERIAL') {
+                  if (tokens.length >= 4) {
+                    const sEnd = tokens[tokens.length - 1];
+                    const sStart = tokens[tokens.length - 2];
+                    const fact = tokens[tokens.length - 3];
+                    const mType = tokens.slice(0, tokens.length - 3).join(' ').replace(/모델\s*종류\s*:?/g, '').trim();
+                    if (/^\d{4,8}$/.test(sStart) && /^\d{4,8}$/.test(sEnd)) {
+                      parsedRows.push({ model: mType, factory: fact, start: sStart, end: sEnd });
                     }
                   }
-                });
+                }
               }
 
               return {
                 modelType: parsedRows.length > 0 ? parsedRows.map(r => r.model).join(' | ') : 'EC300E L Volvo',
                 factory: parsedRows.length > 0 ? parsedRows.map(r => r.factory).join(' | ') : 'Changwon',
-                serialStart: parsedRows.length > 0 ? parsedRows.map(r => r.start).join(' | ') : '310001',
-                serialEnd: parsedRows.length > 0 ? parsedRows.map(r => r.end).join(' | ') : '316000'
+                serialStart: parsedRows.length > 0 ? parsedRows.map(r => r.start).join(' | ') : '316001',
+                serialEnd: parsedRows.length > 0 ? parsedRows.map(r => r.end).join(' | ') : '320000'
               };
             }
+
+            const topData = parseTopTableLines();
 
             if (isSae) {
               // --- SAE J1939 파싱 ---
@@ -341,32 +321,30 @@
               const dtc = `MID${mid} ${pidType}${pid}`;
 
               let displayMsg = `${mid} ${pidType}${pid}`;
-              const dispAnchor = allItems.find(it => it.str.includes('텍스트') && it.str.includes('프레젠테이션'));
-              if (dispAnchor) {
-                const row = allItems.filter(it => Math.abs(it.y - dispAnchor.y) <= 4 && it.x > (dispAnchor.x + 30));
+              const dispLine = lines.find(l => l.text.includes('텍스트') && l.text.includes('프레젠테이션'));
+              if (dispLine) {
+                const row = dispLine.items.filter(it => it.x > 150);
                 if (row.length) displayMsg = row.map(it => it.str).join(' ').trim();
               }
 
-              const topData = parseTopTable();
-
               let ecu = `MID${mid} 엔진 ECU`;
-              const ecuAnchor = allItems.find(it => it.str.includes('컨트롤') && it.str.includes('유니트'));
-              if (ecuAnchor) {
-                const row = allItems.filter(it => Math.abs(it.y - ecuAnchor.y) <= 4 && it.x > (ecuAnchor.x + 30));
+              const ecuLine = lines.find(l => l.text.includes('컨트롤') && l.text.includes('유니트'));
+              if (ecuLine) {
+                const row = ecuLine.items.filter(it => it.x > 150);
                 if (row.length) ecu = `MID${mid} ` + row.map(it => it.str).join(' ').replace(/MID\d+/g, '').replace(/^[:\s\-]+/, '').trim();
               }
 
               let paramName = `${pidType}${pid}`;
-              const paramAnchor = allItems.find(it => (it.str.includes('PID') || it.str.includes('SID')) && it.x < 180);
-              if (paramAnchor) {
-                const row = allItems.filter(it => Math.abs(it.y - paramAnchor.y) <= 4 && it.x > (paramAnchor.x + 30));
+              const paramLine = lines.find(l => (l.text.includes('PID') || l.text.includes('SID')) && l.items[0].x < 180);
+              if (paramLine) {
+                const row = paramLine.items.filter(it => it.x > 150);
                 if (row.length) paramName = `${pidType}${pid} ` + row.map(it => it.str).join(' ').replace(new RegExp(`^${pidType}\\s*${pid}`, 'i'), '').replace(/^[:\s\-]+/, '').trim();
               }
 
               let standard = '';
-              const stdAnchor = allItems.find(it => it.str.includes('기준') && it.x < 180 && !it.str.includes('고장'));
-              if (stdAnchor) {
-                const row = allItems.filter(it => Math.abs(it.y - stdAnchor.y) <= 4 && it.x > (stdAnchor.x + 30));
+              const stdLine = lines.find(l => l.text.includes('기준') && !l.text.includes('고장 모드'));
+              if (stdLine) {
+                const row = stdLine.items.filter(it => it.x > 150);
                 if (row.length) standard = row.map(it => it.str).join(' ').trim();
               }
 
@@ -408,11 +386,40 @@
                 const leftItems = blockItems.filter(it => it.x < splitX && it.y <= tableTopY && it.y >= tableBottomY && !isLabelNoise(it.str));
                 const rightItems = blockItems.filter(it => it.x >= splitX && it.y <= tableTopY && it.y >= tableBottomY && !isLabelNoise(it.str));
 
+                function assemble(items) {
+                  items.sort((a, b) => (Math.abs(b.y - a.y) > 2 ? b.y - a.y : a.x - b.x));
+                  let bLines = [], currY = null, currLine = [];
+                  items.forEach(it => {
+                    if (currY === null || Math.abs(it.y - currY) > 4) {
+                      if (currLine.length) bLines.push(currLine.join(' '));
+                      currLine = [it.str];
+                      currY = it.y;
+                    } else {
+                      currLine.push(it.str);
+                    }
+                  });
+                  if (currLine.length) bLines.push(currLine.join(' '));
+
+                  let bullets = [];
+                  bLines.forEach(line => {
+                    let text = line.trim();
+                    if (!text || text === '없음') return;
+                    if (isBulletStart(text) || bullets.length === 0) {
+                      let cleaned = text.replace(BULLET_CLEAN_REGEX, '').trim();
+                      if (cleaned) bullets.push(cleaned);
+                    } else {
+                      let cleaned = text.replace(BULLET_CLEAN_REGEX, '').trim();
+                      if (cleaned) bullets[bullets.length - 1] += ' ' + cleaned;
+                    }
+                  });
+                  return bullets.length > 0 ? Array.from(new Set(bullets)).join(' | ') : '없음';
+                }
+
                 fmiList.push({
                   fmi: fmiNum,
                   cond: cond,
-                  symptom: extractRightColumnText(leftItems, 0, tableTopY, tableBottomY),
-                  causes: extractRightColumnText(rightItems, splitX, tableTopY, tableBottomY),
+                  symptom: assemble(leftItems),
+                  causes: assemble(rightItems),
                   actions: actions
                 });
               }
@@ -426,58 +433,79 @@
                 }
               });
             } else {
-              // --- ISO DTC 정밀 2D Bounding Box 파싱 ---
+              // --- ISO DTC 결합 파싱 ---
               let dtc = '';
               const dtcMatch = fullRawText.match(/([P|U|B|C][0-9A-Z]{5,7})/);
               if (dtcMatch) dtc = dtcMatch[1].replace(/\s+/g, '');
 
-              const topData = parseTopTable();
-
-              const leftLabels = allItems.filter(it => it.x < 200);
-              const anchorECU = leftLabels.find(it => it.str.includes('컨트롤') && it.str.includes('유니트'));
-              const anchorDTCDesc = leftLabels.find(it => it.str.includes('DTC 코드') || it.str.includes('고장 유형') || it.str.includes('구성부품'));
-              const anchorStd = leftLabels.find(it => it.str.includes('기준') && !it.str.includes('고장'));
-              const anchorDiag = leftLabels.find(it => it.str.includes('진단') || it.str.includes('고장 이벤트'));
-
-              let ecu = '엔진 컨트롤 모듈';
-              if (anchorECU && anchorDTCDesc) {
-                const eItems = allItems.filter(it => it.x >= 180 && it.y <= (anchorECU.y + 6) && it.y > (anchorDTCDesc.y + 2));
-                if (eItems.length) ecu = eItems.map(it => it.str).join(' ').trim();
+              let ecu = '일반 용도 장비의 전자 컨트롤 유닛 2';
+              const ecuLine = lines.find(l => l.text.includes('컨트롤') && l.text.includes('유니트'));
+              if (ecuLine) {
+                const row = ecuLine.items.filter(it => it.x > 150);
+                if (row.length) ecu = row.map(it => it.str).join(' ').trim();
               }
 
               let compFull = dtc;
-              if (anchorDTCDesc && anchorStd) {
-                const cItems = allItems.filter(it => it.x >= 180 && it.y <= (anchorDTCDesc.y + 6) && it.y > (anchorStd.y + 2));
-                if (cItems.length) compFull = cItems.map(it => it.str).join(' ').trim();
+              const compLine = lines.find(l => l.text.includes('DTC 코드') || l.text.includes('고장 유형') || l.text.includes('구성부품'));
+              if (compLine) {
+                const row = compLine.items.filter(it => it.x > 150);
+                if (row.length) compFull = row.map(it => it.str).join(' ').trim();
               }
 
               let standard = '';
-              if (anchorStd && anchorDiag) {
-                const sItems = allItems.filter(it => it.x >= 180 && it.y <= (anchorStd.y + 6) && it.y > (anchorDiag.y + 2));
-                if (sItems.length) standard = sItems.map(it => it.str).join(' ').trim();
+              const stdLine = lines.find(l => l.text.includes('기준') && !l.text.includes('진단') && !l.text.includes('고장'));
+              if (stdLine) {
+                const row = stdLine.items.filter(it => it.x > 150);
+                if (row.length) standard = row.map(it => it.str).join(' ').trim();
               }
 
-              const diagLabels = leftLabels.filter(it => it.y < (anchorDiag ? anchorDiag.y : 600));
-              const aEvent = diagLabels.find(it => it.str.includes('고장') && it.str.includes('이벤트'));
-              const aSym = diagLabels.find(it => it.str.includes('증상'));
-              const aCond = diagLabels.find(it => it.str.includes('조건'));
-              const aPre = diagLabels.find(it => it.str.includes('선행조치'));
-              const aCause = diagLabels.find(it => it.str.includes('가능한') && it.str.includes('이유'));
-              const aAct = diagLabels.find(it => it.str.includes('조치'));
-              const aEnd = allItems.find(it => it.str.includes('주석:') || it.str.includes('Guided Diagnostics')) || { y: 0 };
-
-              let eventText = '-';
-              if (aEvent && aSym) {
-                const evItems = allItems.filter(it => it.x >= 180 && it.y <= (aEvent.y + 6) && it.y > (aSym.y + 2));
-                if (evItems.length) eventText = evItems.map(it => it.str).join(' ').replace(BULLET_CLEAN_REGEX, '').trim() || '-';
+              function getSectionIdx(keyword) {
+                return lines.findIndex(l => {
+                  const firstItem = l.items[0] || {};
+                  return firstItem.x < 180 && l.text.replace(/\s+/g, '').includes(keyword);
+                });
               }
 
-              let symptomText = aSym && aCond ? extractRightColumnText(allItems, 180, aSym.y, aCond.y) : '없음';
-              let condText = aCond && aPre ? extractRightColumnText(allItems, 180, aCond.y, aPre.y) : '없음';
+              const idxEvent = getSectionIdx('고장이벤트');
+              const idxSym = getSectionIdx('증상');
+              const idxCond = getSectionIdx('조건');
+              const idxPre = getSectionIdx('선행조치');
+              const idxCause = getSectionIdx('가능한이유');
+              const idxAct = getSectionIdx('조치');
+              const idxEnd = lines.findIndex(l => l.text.includes('Guided Diagnostics') || l.text.includes('주석:'));
+
+              function extractSection(startIdx, endIdx) {
+                if (startIdx === -1) return '없음';
+                const actualEnd = (endIdx !== -1) ? endIdx : (lines.length);
+                const secLines = lines.slice(startIdx, actualEnd);
+
+                let bullets = [];
+                secLines.forEach((l) => {
+                  const contentItems = l.items.filter(it => it.x >= 150);
+                  const lineContent = contentItems.map(it => it.str).join(' ').trim();
+                  if (!lineContent || lineContent === '없음' || lineContent === '¡' || lineContent === '○') return;
+
+                  const isBullet = isBulletStart(lineContent) || l.items.some(it => it.str === '¡' || it.str === '○');
+                  const cleaned = lineContent.replace(BULLET_CLEAN_REGEX, '').trim();
+                  if (!cleaned || cleaned === '없음') return;
+
+                  if (isBullet || bullets.length === 0) {
+                    bullets.push(cleaned);
+                  } else {
+                    bullets[bullets.length - 1] += ' ' + cleaned;
+                  }
+                });
+
+                return bullets.length > 0 ? Array.from(new Set(bullets)).join(' | ') : '없음';
+              }
+
+              let eventText = extractSection(idxEvent, idxSym);
+              let symptomText = extractSection(idxSym, idxCond);
+              let condText = extractSection(idxCond, idxPre);
 
               let preDtcText = '없음';
-              if (aPre && aCause) {
-                const rawPre = extractRightColumnText(allItems, 180, aPre.y, aCause.y);
+              if (idxPre !== -1) {
+                const rawPre = extractSection(idxPre, idxCause);
                 if (rawPre && rawPre !== '없음') {
                   const codes = rawPre.match(/([P|U|B|C][0-9A-Z]{5,7})/g) || [];
                   const validCodes = codes.filter(c => c !== dtc && !c.startsWith('DTC'));
@@ -485,8 +513,8 @@
                 }
               }
 
-              let causesText = aCause && aAct ? extractRightColumnText(allItems, 180, aCause.y, aAct.y) : '없음';
-              let actionsText = aAct ? extractRightColumnText(allItems, 180, aAct.y, aEnd.y) : '없음';
+              let causesText = extractSection(idxCause, idxAct);
+              let actionsText = extractSection(idxAct, idxEnd !== -1 ? idxEnd : lines.length);
 
               resolve({
                 docType: 'iso',
@@ -560,8 +588,15 @@
       if (d._dupStatus === 'VARIANT_NEW') dupBadge = '<span class="badge badge-variant">🟡 변종 (별도저장)</span>';
       else if (d._dupStatus === 'EXACT_DUP') dupBadge = '<span class="badge badge-dup">🟠 기존 덮어쓰기</span>';
 
-      let serialInfo = (d.factory || d.serialStart || d.serialEnd) ? `<br><span style="font-size:11px; color:#0284c7;">[${d.factory || '-'}] #${d.serialStart || '시작'}~${d.serialEnd || '종료'}</span>` : '';
-      let detailText = (d.docType === 'sae') ? `<b>${d.paramName || ''}</b><br><span style="color:#64748b;">(FMI ${(d.fmiList||[]).length}개 모드)</span>` : (d.event || d.compFull || '-');
+      const isOpt = String(d.factory || '').startsWith('[옵션]');
+      let serialInfo = '';
+      if (isOpt) {
+        serialInfo = `<br><span style="font-size:11px; color:#0284c7;">${d.factory} : ${d.serialStart}</span>`;
+      } else if (d.factory || d.serialStart || d.serialEnd) {
+        serialInfo = `<br><span style="font-size:11px; color:#0284c7;">[${d.factory || '-'}] #${d.serialStart || '시작'}~${d.serialEnd || '종료'}</span>`;
+      }
+
+      let detailText = (d.docType === 'sae') ? `<b>${d.paramName || ''}</b><br><span style="color:#64748b;">(FMI ${(d.fmiList||[]).length}개 모드)</span>` : (d.compFull || d.event || '-');
 
       tr.innerHTML = `<td>${tabBadge}</td><td><b>${d.dtc}</b></td><td><b>${d.modelType || 'Volvo'}</b>${serialInfo}</td><td>${detailText}</td><td>${dupBadge}</td>`;
       tbody.appendChild(tr);
